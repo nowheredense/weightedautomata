@@ -554,8 +554,7 @@ def firstwitdenom(sigma,denom):
             return mats;
     return None;
 
-#return list of witnesses for PFA complexity of sigma in SW
-#with matdenom = denom
+#return list of witnesses for PFA complexity of sigma in SW with matdenom = denom
 def witsdenom(sigma,denom):
     if not SW.has_key(sigma) or len(SW[sigma]) == 0:
         return None;
@@ -588,6 +587,7 @@ def isactualaut(matpair):
                     return False;
     return True;
 
+#(obviously the following is intended only for 2x2 matrices...)
 #substitute epses (tuple of epsilons, one tuple per matrix,
 #one epsilon per row) into matpairs for the variable eps
 def matsub(matpairs,epses):
