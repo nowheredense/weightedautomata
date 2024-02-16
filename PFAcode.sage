@@ -331,19 +331,6 @@ def finduniques(matslist,lengths,start_states=None,accept_states=None):
     start_states = matrix(start_states)
     accept_states = matrix(accept_states).transpose()
     return finduniques_witness( [ (w,start_states,accept_states) for w in matslist], lengths)
-#    words = [];
-#    if isint(lengths):
-#        lenlist = [lengths];
-#    else:
-#        lenlist = lengths;
-#    for l in lenlist:
-#        words = words + [tuptostr(s) for s in itertools.product(alph,repeat=l)];
-#    for P in matslist:
-#        probs = list_probs_fromwords(P,start_states,accept_states,words);
-#        high = highest_prob(probs);
-#        if len(high) == 1:
-#            uniques.append([P,high[0]]);
-#    return uniques;
 
 #same, but expects thewits to be a list of "witness tuples" (matdict, initial state vector, final state vector)
 #this one allows each witness to come with different initial/final vectors
@@ -697,31 +684,33 @@ def pathlist_witness(theaut,sigma):
 #will print any successes, and stop after trying maxattempts strings. If maxattemps=0, try all of them.
 #won't attempt to find witnesses if one already exists.
 #if dontbother=True, don't bother to look for stuff if we already have witnesses. In this case, also don't add them to SW
-def tryfindwitness(strings,pool,start_states=None,accept_states=None,maxattempts=50,dontbother=True):
-    c = 0;
+#if dontadd=True, do everything except add the witness to SW and update SC
+def tryfindwitness(strings,pool,start_states=None,accept_states=None,maxattempts=0,dontbother=True,dontadd=True):
+    c = 0
     for s in strings:
         if (s in SW.keys() and len(SW[s]) > 0) or NC[s] == 1:
-            if dontbother: continue;
-        c = c + 1;
+            if dontbother: continue
+        c = c + 1
         if c < 0:
-            continue;
+            continue
         if c > maxattempts and maxattempts != 0:
-            break;
-        #sys.stdout.write("%d\r" % (c) );
-        print(c,s);
-        v = start_states;
-        f = accept_states;
-        wits = findwitness(pool,s,v,f);
+            break
+        #sys.stdout.write("%d\r" % (c) )
+        sys.stdout.write(f"{c}\t {s}\r")
+        #print(c,s)
+        v = start_states
+        f = accept_states
+        wits = findwitness(pool,s,v,f)
         if wits != None:
-            print(s,wits,v,f);
-            if dontbother: print(addonewit(wits,s,v,f));
-            print("");
-            print(flip(s),switchmats(wits),v,f);
-            if dontbother: print(addonewit(switchmats(wits),flip(s),v,f));
-            print("");
+            print(s,wits,v,f)
+            if dontbother and not dontadd: print(addonewit(wits,s,v,f))
+            print("")
+            print(flip(s),switchmats(wits),v,f)
+            if dontbother and not dontadd: print(addonewit(switchmats(wits),flip(s),v,f))
+            print("")
         else:
-            print("no witness found");
-            print("");
+            print("no witness found")
+            print("")
             
 #returns an m-adic PFA, a la Salomaa/Turakainen. It is a tuple: (matrices, initial, accepting) (as in SW)
 #input: homo, a dict giving a homomorphism. Keys are generators of the language, values are their images (all strings)
@@ -928,7 +917,7 @@ S2[0] = Set([]);
 for i in range(2,15):
     S2[i] = Set([tuptostr(it) for it in itertools.product([0,1],repeat=i)]);
     S2[0] = S2[0].union(S2[i]);
-    
+
 S3 = {}; #ternary strings that use all 3 letters
 S3all = {}; #all ternary strings
 S3[0] = Set([]);
