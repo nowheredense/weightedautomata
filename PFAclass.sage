@@ -57,7 +57,8 @@ def binstrings(lengths):
 #------------------------------------------------------------------
 
 # TODO: constructor from transitions (given as rules, not matrices)
-#       function to fetch a single specified trans prob
+#       fetch a single specified trans prob - and change one (w/o giving a whole new matrix)
+#       change initial distribution, etc, without having to give a matrix object
 class ProbabilisticFiniteAutomaton:
 
     # expects matrix_dict to be in usual format (recap here)
@@ -127,7 +128,7 @@ class ProbabilityList(dict):
         if oflength == None:
             usestrings = list(self.keys())
         else:
-            assert _isint(oflength) # want this to be a single integer
+            assert self._isint(oflength) # want this to be a single integer
             usestrings = [k for k in self.keys() if len(k) == oflength]
         returnlist = []
         maxprob = max([self[w] for w in usestrings])
@@ -136,8 +137,7 @@ class ProbabilityList(dict):
             if self[w] == maxprob: # list all strings with that probability
                 returnlist.append(w)
         return returnlist
-
     
     #check if an object is an integer, either int or Sage integer
-    def _isint(obj):
+    def _isint(self,obj):
         return (isinstance(obj,sage.rings.integer.Integer) or isinstance(obj,int))
