@@ -1,10 +1,15 @@
 import itertools
 import numpy
+import heapq
 import urllib,json
 import pickle
 
 
 #------------------UTILITY FUNCTIONS------------------------
+
+# (utility) check if an object is an integer, either int or Sage integer
+def isint(obj):
+    return (isinstance(obj,sage.rings.integer.Integer) or isinstance(obj,int))
 
 # object: what to dump; name: string without ".pickle"
 def pickletofile(object,name):
@@ -31,6 +36,17 @@ def nfacomplexity(string):
 def tuptostr(atuple):
     return ''.join([str(t) for t in atuple])
 
+# return list of every string obtained by successively appending the characters listed in letters
+# letters is an iterable (incl string)
+# optional: prefix everything with the string start
+def strorbit(letters,start=''):
+    assert len(letters) > 0
+    strings = [start]
+    currstr = start
+    for l in letters:
+        currstr = currstr + l
+        strings.append(currstr)
+    return strings
 
 #------------------------------------------------------------------
 
@@ -119,34 +135,52 @@ class ProbabilisticFiniteAutomaton:
     def gap(self,string):
         n = len(string)
         # pull only the probabilities of each other word of length n
-        oflengthn = [tuptostr(it) for it in itertools.product(self.alphabet,repeat=n)]
+        oflengthn = self.strings([n])
         probsn = self.probs(oflengthn)
-        #tocompare = set([probsn[k] for k in probsn.keys() if k != string])
-        #myprob = probsn[string]
         return min([probsn[string] - probsn[otherstr] for otherstr in probsn.keys() if otherstr != string])
-        #return min(differencelist) #smallest such value is the gap, by definition
+
+    # return ProbabilityList of acceptance probabilities of every string obtained by successively appending the characters listed in letters
+    # letters is an iterable (incl string)
+    # optional: prefix everything with the string start
+    def orbit(self,letters,start=''):
+        return self.probs(strorbit(letters,start))
+
+    # return list of all possible strings drawn from self's alphabet, of lengths oflengths (list/tuple)
+    def strings(self,oflengths):
+        thelist = []
+        for i in oflengths:
+            assert isint(i)
+            thelist = thelist + [tuptostr(it) for it in itertools.product(self.alphabet,repeat=i)]
+        return thelist
+
+    # return True iff teststring has the highest prob among strings of its length
+    # this is faster than computing all probs and comparing because it returns False as soon as it finds another string with prob >= prob of teststring
+    def ishighest(self,teststring):
+        myprob = self.prob(teststring)
+        if myprob == 0: return False # no need to even go on
+        comparestrings = self.strings([len(teststring)]) #TODO: how much unnecessary overhead does this add?
+        for s in comparestrings:
+            if s == teststring: continue # don't compare against yourself
+            if self.prob(s) >= myprob: return False
+        return True
 
 #------------------------------------------------------------------
 
 class ProbabilityList(dict):
-    # (utility) check if an object is an integer, either int or Sage integer
-    def _isint(self,obj):
-        return (isinstance(obj,sage.rings.integer.Integer) or isinstance(obj,int))
+    # return a copy of self, sorted in descending order by probability
+    def sorted(self):
+        return ProbabilityList(sorted(self.items(), key=lambda item: item[1], reverse=True))
 
-    # (utility) sort a list of the form (thing, number) in descending order of number
-    def _sortlist(self,thelist):
-        return sorted(thelist,key=lambda x:x[1],reverse=True)
-
-    # sort self in descending order 
-    #def sort(self):
-
-
-    # return a /sorted/ ProbabilityList (in descending order by prob) consisting of the sub-dict of self's strings of length length
-    def slice(self,length):
-        assert self._isint(length) and length in self.lengths()
-        # convert to a list first and sort (TODO: this is probably a stupid way to do it, right?)
-        mylist = self._sortlist( [(s,self[s]) for s in self.keys() if len(s) == length] )
-        return dict(mylist)
+    # return a ProbabilityList (optionally sorted in descending order by prob, if dosort=True) consisting of the sub-dict of self's strings of length length
+    def slice(self,length,dosort=True):
+        assert isint(length) and length in self.lengths()
+        newplist = ProbabilityList()
+        for s in self.keys():
+            if len(s) == length:
+                newplist[s] = self[s]
+        if dosort:
+            newplist = newplist.sorted()
+        return newplist
 
     # return list of string lengths represented in self
     def lengths(self):
@@ -160,7 +194,7 @@ class ProbabilityList(dict):
         if oflength == None:
             usestrings = list(self.keys())
         else:
-            assert self._isint(oflength) and oflength in self.lengths()
+            assert isint(oflength) and oflength in self.lengths()
             usestrings = [k for k in self.keys() if len(k) == oflength]
         returnlist = []
         maxprob = max([self[w] for w in usestrings])
@@ -171,6 +205,11 @@ class ProbabilityList(dict):
         return returnlist
 
     # return gap between the two highest-prob strings of oflength (which needs to be specified)
+    # return format: [gap, highest-prob string, second-highest-prob string]
     def highestgap(self,oflength):
-        assert self._isint(oflength) and oflength in self.lengths() # valid integer and valid length
-        
+        assert isint(oflength) and oflength in self.lengths() # valid integer and valid length
+        compare = self.slice(oflength,dosort=False)
+        # get 2 strings of highest prob, in order (and want to avoid sorting, etc)
+        highest2 = heapq.nlargest(2, compare, key=compare.get)
+        # add the difference between their probs out front
+        return [compare[highest2[0]] - compare[highest2[1]]] + highest2
