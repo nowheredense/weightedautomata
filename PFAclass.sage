@@ -213,3 +213,5 @@ class ProbabilityList(dict):
         highest2 = heapq.nlargest(2, compare, key=compare.get)
         # add the difference between their probs out front
         return [compare[highest2[0]] - compare[highest2[1]]] + highest2
+    # TODO: it's weird to have highestgap() here but gap() in the PFA class. Maybe have both in both places, with the ones in PFA just being "compute the prob list, then run the PL func"?
+    #       one issue would be the extra overhead of taking the slice when you already know everything is of the correct length
