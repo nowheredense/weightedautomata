@@ -1,0 +1,74 @@
+This is a sloppily formatted todo list plucked from the working version of
+WeightedAutomaton.py. It excludes various inline TODOs still in that file.
+
+Decide on "accepting" vs "final" states.
+
+TO IMPLEMENT (from old code):
+      bruteforce() family of functions
+      multiplypfa()
+      madic() (with madic_expansion, homo_image)
+      functions to manage witness, etc dictionaries (addwits(), addwitsnew(), addonewit())
+      matsub() for stuff over SR, but name better etc
+      LOW PRIORITY - autgraph() etc (to create a digraph)
+      pathlist()
+      pfa2ifs() and friends
+      findwitness()?
+      isactual()
+
+- For bruteforce(): allow to specify a range for the coefficients as well as a
+  subdivision. Allow options to set single initial and final vectors, with the
+  default being to also bruteforce all subdivisions of those.
+
+- Algebraic operations on WAs, including combining different ones (refer to Paz etc)
+- Add and delete states
+- subs() function for symbolic WAs that returns a new (partially) numerical WA 
+- *** in general, the "ring" attribute is limited and misleading. If i'm going
+  to get serious about partial substitutions in symbolic WAs, an actual
+  is_numeric/symbolic function would be better to use when checking if certain
+  other operations make sense for self.
+
+- Constructor from transitions (given as rules, not matrices)
+      fetch a single specified trans prob - and change one (w/o giving a whole new matrix)
+      change initial distribution, etc, without having to give a matrix object
+- Also, a version where you can have it fill in the last entry of each row for
+you instead of you having to do it manually.
+- Also, one to create a symbolic WA of a given size without you having to do the
+  variables yourself
+
+
+
+Should i inherit Transducer? the latter is completely useless for
+what i actually want to do, but it does have a few nice built-in methods for
+adding states and such. I would want to overload some of them and, obviously,
+add all the stuff you'd obviously want to do. But really it doesn't make sense
+to inherit Transducer unless i can /disable/ a lot of the methods....no....
+not even that is enough, you'd have to prevent bad labels etc from being
+added. Unless you just let the user fuck themselves up.
+my conclusion: do not inherit from Transducer, but mimic a couple of its
+convenient methods. BUT, what about inheriting FiniteStateMachine?
+The fundamental problem with these classes is they aren't general enough. I'm
+currently thinking i should actually make this a GPFA implementation, so the
+ concept of "initial/final states" is frankly irrelevant.
+
+
+- Implement the following in __init__:
+ if alph!=None, it's expected to be a list of chars, and the following changes occur:
+   If a letter l is in alph but not matrix_dict.keys(), add the identity
+      matrix as a transition matrix for l.
+   If l is in matrix_dict.keys() but not alph, ignore that transition matrix
+      (truncating the dictionary).
+
+
+
+Implement the following:
+    # return an equivalent IFS, TODO implement a separate IFS class (for convenience - later)
+#    def to_ifs(self):
+        # pseudocode: if all states are accepting, return sth that gives the map identically 1
+        # if not self.is_accepting(self.size) [last state], proceed
+        # o/w make a new PFA w/each matrix having rows+cols transposed accordingly
+        # so, at this point we have a PFA with the last (size'th-1) state not accepting.
+        # do the following for each transmatrix P: (supposing self.size() == k)
+        #   let a_i = first k-1 entries of ith row of P; let U be P w/last row+col deleted
+        #   create the affine map x |-> a_k + x*(U - 1_{k-1,1}*a_k). Here 1_{n,m} = n x m matrix of 1s
+        # finally, starting vector is just self.initial_states truncated to first k-1 entries
+        # We should also somehow signify which components of the orbit (image vector) should be summed up to recover the acceptance probability function
