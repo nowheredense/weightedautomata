@@ -19,8 +19,8 @@ in ``Examples.ipynb`` which should cover the basics. The code itself includes
 comments describing the usage of every function.
 
 ## Files
-* WeightedAutomaton.py: WeightedAutomaton and auxiliary ProbabilityList classes
-* witnesses.pickle: an archive of many witnesses to the [PFA
+* ``WeightedAutomaton.py``: WeightedAutomaton and auxiliary ProbabilityList classes
+* ``witnesses.pickle``: an archive of many witnesses to the [PFA
   complexity](https://arxiv.org/abs/2402.13376) of binary strings through length
   9 and beyond
 
@@ -28,17 +28,14 @@ comments describing the usage of every function.
 Requires Sage 9.x or higher (for Python 3). Tested in 9.4.
 
 To use, just copy WeightedAutomaton.py into the working directory and run
+ 
+    sage: load("WeightedAutomaton.py")
 
-    ```python
-    load("WeightedAutomaton.py")
-    ```
-
-inside Sage. If you also want the database of witnesses, download
+If you also want the database of witnesses, download
 ``witnesses.pickle`` to the working directory and run, e.g.,
 
-    ```python
-    SW = WeightedAutomaton._loadwits("witnesses")
-    ```
+    sage: SW = WeightedAutomaton._loadwits("witnesses")
+    
 to store the database (formatted as a dictionary associating each string to a
 list of ``WeightedAutomaton`` objects) in ``SW``.
 
