@@ -3,59 +3,71 @@ import numpy
 import heapq
 import pickle
 
-class WeightedAutomaton:
-    # expects matrix_dict to be in usual format (recap here)
-    # expects init_states and accept_state to be lists/tuples
-    # TODO: make ring match ring in matrix_dict by default
-    def __init__(self,matrix_dict,init_states,accept_states,alph=None,ring=QQ):
+class WeightedAutomaton(SageObject):
+    def __init__(self,matrix_dict,init_states,final_states,alph=None,ring=QQ):
         """
-        Create a WeightedAutomaton instance using transition matrices
-        ``matrix_dict`` (as a dictionary in the form {letter: Sage matrix}),
-        initial state vector ``init_states`` (as a list), and final state vector
-        ``accept_states`` (as a list).
+        Return a WeightedAutomaton instance using transition matrices
+        ``matrix_dict`` (as a dictionary in the form {letter: matrix}),
+        initial state vector ``init_states`` (as a list, tuple, vector, or
+        matrix with one row), and final state vector ``final_states`` (as a
+        list, tuple, vector, or matrix with one column).
 
-        The keys in ``matrix_dict`` should be strings.
+        The keys in ``matrix_dict`` will be coerced to strings and will become
+        the letters of the alphabet the WeightedAutomaton reads from.
         The values in ``matrix_dict`` must be square matrices, all of the same
         size, which must also match the lengths of ``init_states`` and
-        ``accept_states``.
+        ``final_states``. They can be given as actual Sage matrices or as
+        lists of lists, e.g., [[1,0,0],[0,1,0],[0,0,1]].
 
         You can optionally set the keyword-only argument ``ring`` to signal the
-        ring the matrix coefficients are supposed to live in. Default is QQ.
-        Currently, the constructor does nothing to check that your choice of
-        ``ring`` actually matches the matrices you pass in.
+        ring the matrix coefficients are supposed to live in; this will result
+        in all matrices and vectors having their rings changed to ``ring``.
+        By default everything will be coerced to be over QQ (possibly subject to
+        future change for greater flexibility).
 
         In the future, several alternative constructors will be provided to make
         this less clumsy to use.
 
         The constructor sets the properties self.transitions,
-        self.initial_states, self.accepting_states, self.alphabet, self.ring,
+        self.initial, self.final, self.alphabet, self.ring,
         self.states, and self.size (the latter being the number of states).
 
         EXAMPLES::
 
-            sage: mytransitions = {'0': matrix([[1/2,0,1], [0,1/2,0], [0,0,1]]),
-                     '1': matrix([[0,1,0], [1/8,0,1/2], [0,0,1]]),
-                     '2': matrix([[1,1,0], [0,0,0], [0,0,1]])}
+            sage: mytransitions = {'0': [[1/2,0,1], [0,1/2,0], [0,0,1]],
+                     '1': [[0,1,0], [1/8,0,1/2], [0,0,1]],
+                     '2': [[1,1,0], [0,0,0], [0,0,1]]}
             sage: initialstates = [1/2,1/2,0]
             sage: acceptingstates = [1,0,0]
-            sage: myWA = WeightedAutomaton(mytransitions,initialstates,acceptingstates)
+            sage: myWA = WeightedAutomaton(mytransitions,initialstates,acceptingstates,ring=SR)
             sage: myWA
             Weighted finite automaton over the alphabet ['0', '1', '2'] and
-            coefficients in Rational Field with 3 states
+            coefficients in Symbolic Ring with 3 states
 
         """
-        n = len(init_states)
-        if n != len(accept_states):
-            raise ValueError(f'{n} initial states != {len(accept_states)} accepting states')
-        for m in matrix_dict.keys():
+        # this will work if init_states is a list, tuple, vector, or Sage matrix
+        self.initial = deepcopy(matrix(ring,init_states))
+        if self.initial.nrows() != 1:
+            raise TypeError('invalid initial state vector (must be coerceable to a row vector)')
+        # check if final_states is already a matrix (so we know whether to
+        # transpose it or not)
+        if isinstance(final_states,sage.matrix.matrix0.Matrix):
+            self.final = deepcopy(matrix(ring,final_states))
+        else:
+            self.final = matrix(ring,final_states).transpose()
+        n = self.initial.ncols()
+        if self.final.dimensions() != (n,1):
+            raise ValueError(f'final state vector should have dimensions ({n},1) (yours is {self.final.dimensions()})')
+        newtransitions = {}
+        for k in matrix_dict.keys():
+            transfork = deepcopy(matrix(ring,matrix_dict[k]))
             # they should all be square matrices of same size
-            if matrix_dict[m].dimensions() != (n,n):
-                raise ValueError(f'matrix for {m} must be square and of dimension matching the number of states (yours is {matrix_dict[m].dimensions()})')
-        self.transitions = matrix_dict
-        # TODO: actually check matrix_dict is what it's supposed to be! And other sanity checks
-        self.accepting_states = matrix(ring,accept_states).transpose()
-        self.alphabet = list(matrix_dict.keys())
-        self.initial_states = matrix(ring,init_states)
+            if transfork.dimensions() != (n,n):
+                raise TypeError(f'matrix for {k} must be square and of dimension matching the number of states (yours is {transfork.dimensions()} and should be ({n},{n}))')
+            # this forces the keys to be strings, and we already forced the values to have the specified ring
+            newtransitions[str(k)] = transfork
+        self.transitions = newtransitions
+        self.alphabet = list(self.transitions.keys())
         self.ring = ring
         self.size = n
         self.states = list(range(0,n)) # TODO allow general state labels
@@ -68,35 +80,222 @@ class WeightedAutomaton:
     def __repr__(self):
         return "Weighted finite automaton over the alphabet %s and coefficients in %s with %s states"%(self.alphabet,str(self.ring),self.size)
 
-    # this one is intended for pickling the witness database, but it's also nice
-    # to have a "plaintext" representation that doesn't need to pretty print
-    def list(self):
-        return [self.transitions,self.initial_states,self.accepting_states]
-
-    def show(self):
-        """
-        Output a pretty-printed description of self.
-        """
-        for letter in self.alphabet:
-            print(letter)
-            show(table(self.transitions[letter]))
-        print("Initial state distribution:", list(self.initial_states[0]))
-        print("Final state distribution:", list(self.accepting_states.transpose()[0]))
-
+#    def __str__(self):
+#        return str(self.list())
+    
     def __call__(self,string):
         """
         Return the acceptance probability of ``string``.
         """
         return self.prob(string)
 
+    def __eq__(self,other):
+        """
+        Return True iff ``self`` and ``other`` have the same initial and final
+        state vectors, alphabets, rings, states, and transition matrices.
+        """
+        return (self.initial == other.initial and
+                self.final == other.final and
+                self.transitions == other.transitions and
+                self.states == other.states and
+                self.ring == other.ring and
+                self.alphabet == other.alphabet)
+        # the ring /should/ be covered by the matrix equalities, but just to be on the safe side
+        # similarly for alphabet
+
+    def __pos__(self):
+        return self
+
+    def __neg__(self):
+        """
+        Return a WeightedAutomaton which is ``self`` with initial state vector
+        negated. Hence (-self).prob(x) = -(self.prob(x)) for all strings
+        x.
+        """
+        return WeightedAutomaton(self.transitions,-self.initial,
+                                 self.final,ring=self.ring)
+
+    def __add__(self,other):
+        """
+        Return the direct sum of ``self`` and ``other``, i.e.,
+        self.direct_sum(other). See the latter function's documentation for more
+        details.
+        """
+        return self.direct_sum(other)
+
+    def __sub__(self,other):
+        return self.__add__(other.__neg__())
+
+    def __mul__(self,other):
+        """
+        If ``other`` is another WeightedAutomaton, return
+        self.tensor_product(other); see the latter function for more details.
+        If ``other`` is a number, return a WeightedAutomaton identical to
+        ``self`` except with an initial state vector scaled by ``other``.
+        """
+        if isinstance(other,WeightedAutomaton):
+            return self.tensor_product(other)
+        else:
+            return WeightedAutomaton(self.transitions,
+                                     self.ring(other)*self.initial,
+                                     self.final, ring=self.ring)
+    
+    # this is to allow scalar multiplication in either order
+    def __rmul__(self,other):
+        return self.__mul__(other)
 
 
-    ################ UTILITY FUNCTIONS ####################
+################################################################################
+
+    def list(self):
+        """
+        Output a representation of ``self`` as a list, in the format [transition
+        matrix dictionary, initial state vector, final state vector].
+        """
+        return [self.transitions,self.initial,self.final]
+    
+    def show(self):
+        """
+        Output a pretty-printed description of ``self``.
+        """
+        for letter in self.alphabet:
+            print(letter)
+            show(table(self.transitions[letter]))
+        print("Initial state distribution:", list(self.initial[0]))
+        print("Final state distribution:", list(self.final.transpose()[0]))
+
+    # TODO: come up with a better name (and write docstring)
+    def dump_as_strings(self):
+        matrixstrings = {}
+        for l in self.alphabet:
+            matrixstrings[l] = [str(c) for c in self.transitions[l].dense_coefficient_list()]
+        return [matrixstrings, \
+                    [str(c) for c in self.initial.dense_coefficient_list()], \
+                    [str(c) for c in self.final.dense_coefficient_list()]]
+
+
+################################################################################
+######################  CONSTRUCTORS  ##########################################
+################################################################################
+
+    @classmethod
+    def from_dump(self,dumpedstring,thering=QQ):
+        """
+        Return a WeightedAutomaton instance reconstructed from ``dumpedstring``,
+        a string describing a WA exactly in the format output by
+        ``dump_as_strings()``.
+        Optional: specify a ring ``thering`` into which to coerce all entries
+        of all matrices and vectors (default QQ).
+        """
+        preparetrans = {}
+        mysize = len(dumpedstring[1])
+        for k in dumpedstring[0].keys():
+            preparetrans[k] = matrix(mysize,mysize, \
+                    [thering(i) for i in dumpedstring[0][k]])
+        return WeightedAutomaton(preparetrans, \
+            [thering(c) for c in dumpedstring[1]], \
+            [thering(c) for c in dumpedstring[2]], ring=thering)
+
+    @classmethod
+    def madic(self,homo,reverse=False):
+        """
+        Return an m-adic PFA, a la Salomaa/Turakainen.
+        Input: ``homo``, a dict giving a monoid homomorphism on the set of
+        finite strings over some alphabet. Keys of ``homo`` are
+        generators of the language (letters of the alphabet) and values are
+        their images. Every letter must (at present) be castable to an int.
+
+        The WeightedAutomaton returned will read from the alphabet ['0', ...,
+        'm'] where 'm-1' is the largest key specified in ``homo``.
+        If ``reverse`` is False, it will have 3 states, and its acceptance
+        probability function maps every string s to the number 0.phi(s) in base
+        m, where phi is the homomorphism represented by ``homo``.
+        If ``reverse`` is True, it will have 2 states, and its acceptance
+        probability function maps every string s to the number 0.phi(rev(s)) in
+        base m, where rev(s) is the reversal of s.
+
+        If the image of some letter k <= m is not given in ``homo``, the
+        homomorphism will be assumed to send 'k' to itself, i.e., the dictionary
+        entry 'k': 'k' will be assumed. However, at present, if a letter 'a' is
+        ever used in any of ``homo.values()``, then 'b' must appear as a key in
+        ``homo`` for some b >= a.
+        """
+        # return the number "0.string" in base "base"
+        def madic_expansion(string, base):
+            value = QQ(0)
+            base = QQ(base)
+            counter = 0 # we need to keep track of the position
+            while counter < len(string):
+                if not int(string[counter]) < base:
+                    raise ValueError(f'{string} is not a valid {base}-adic string')
+                value += QQ(string[counter]) / (base**(QQ(counter)+1))
+                counter += 1
+            return value
+        #-----------------------------------------
+        m = QQ(max([int(a) for a in homo.keys()])+1)
+        alph = [str(n) for n in range(m)]
+        themats = {} # matrix dict to generate
+        for letter in alph:
+            if letter in homo.keys():
+                phi = madic_expansion(homo[letter],m)
+                malpha = m**(-QQ(len(homo[letter])))
+            else: # if the user didn't specify an image of letter, assume letter |-> letter
+                phi = madic_expansion(letter,m)
+                malpha = m**(-1)
+            if reverse == False:
+                themats[letter] = [[malpha, 1-malpha-phi, phi],
+                                   [0,1,0],
+                                   [0,0,1]]
+            else:
+                themats[letter] = [[1-phi,phi],
+                                   [1-phi-malpha,phi+malpha]]
+        if reverse == False:
+            init = [1,0,0]; final = [0,0,1]
+        else:
+            init = [1,0]; final = [0,1]
+        return WeightedAutomaton(themats, init, final, ring=QQ)
+
+    @classmethod
+    def constant(self,value,alph):
+        """
+        Return a 2-state WeightedAutomaton over alphabet ``alph`` whose
+        acceptance probability function is identically equal to ``value``. If
+        ``value`` is in the interval [0,1], the result will be a PFA.
+        See Paz (1971), p. 146.
+        """
+        myinit = [value,1-value]
+        myfinal = [1,0]
+        mydict = {}
+        for a in alph:
+            mydict[str(a)] = matrix(base_ring(value), [myinit, myinit])
+        return WeightedAutomaton(mydict,myinit,myfinal,
+                                 ring=base_ring(value))
+
+    @classmethod
+    def identity(self,nstates=1,alph=['0'],ring=QQ):
+        """
+        Return a WeightedAutomaton with ``nstates`` (default 1) states over
+        alphabet ``alph`` (default ['0']) and ring ``ring`` (default QQ), all of
+        whose transition matrices are the identity matrix.
+        Its initial and final vectors will both be (1,0,...,0).
+        The output is always a PFA.
+        """
+        if nstates <= 0:
+            raise ValueError('a WeightedAutomaton must have at least one state')
+        initandfinal = [1]+[0]*(nstates-1)
+        return WeightedAutomaton(dict(zip(alph,
+                                   [identity_matrix(nstates)]*len(alph))),
+                                 initandfinal, initandfinal, ring=ring)
+
+
+################################################################################
+#################### UTILITY FUNCTIONS #########################################
+################################################################################
     
     @classmethod
     def _isint(self,obj):
         """
-        Check if ``obj`` is an integer, either a Python int or a Sage Integer.
+        Check if ``obj`` is either a Python int or a Sage Integer.
         """
         return (isinstance(obj,sage.rings.integer.Integer) or isinstance(obj,int))
 
@@ -124,30 +323,35 @@ class WeightedAutomaton:
     def _savewits(self,mywitnesses,filename):
         """
         Save the dictionary of WeightedAutomaton instances ``mywitnesses`` to
-        ``filename.pickle``.
+        ``filename``. Will be a zlib-encoded dict, readable by the Sage function
+        loads(), where each WA is given by its representation via
+        ``dump_as_strings()``. 
         ``mywitnesses`` is expected to be in the form retrieved by
         ``_loadwits()`` and will be saved in list format.
         """
         # we have to save in a dumb format because WeightedAutomaton instances are too fragile
         listSW = {}
-        for k in SW.keys():
+        for k in mywitnesses.keys():
             listSW[k] = []
-            for w in SW[k]:
-                listSW[k].append(w.list())
-        WeightedAutomaton._pickletofile(listSW,"witnesses")
+            for w in mywitnesses[k]:
+                listSW[k].append(w.dump_as_strings())
+        with open(filename,"wb") as f:
+            f.write(dumps(listSW))
 
     @classmethod
     def _loadwits(self,filename):
         """
-        Load a witness dictionary from ``filename.pickle``, convert to a
-        dictionary of ``WeightedAutomaton`` instances, and return the latter.
+        Load a witness dictionary from ``filename`` (expected in the format
+        output by ``_savewits()``), convert to a
+        dictionary of WeightedAutomaton instances, and return the latter.
         """
-        rawSW = WeightedAutomaton._unpicklefile("witnesses")
+        with open(filename,"rb") as f:
+            rawSW = loads(f.read())
         newSW = {}
         for k in rawSW.keys():
             newSW[k] = []
             for w in rawSW[k]:
-                newSW[k].append(WeightedAutomaton._listtoclass(w))
+                newSW[k].append(WeightedAutomaton.from_dump(w,thering=QQ))
         return newSW
 
     @classmethod
@@ -156,7 +360,7 @@ class WeightedAutomaton:
         Convert a list or tuple ``witness'' specifying a WeightedAutomaton (as
         in output of ``list()``) to a WeightedAutomaton instance.
         """
-        return WeightedAutomaton(witness[0], list(witness[1][0]),list(witness[2].transpose()[0]))
+        return WeightedAutomaton(witness[0],witness[1],witness[2])
 
     @classmethod
     def _tuptostr(self,atuple):
@@ -165,55 +369,31 @@ class WeightedAutomaton:
         """
         return ''.join([str(t) for t in atuple])
 
-    # return list of every string obtained by successively appending the characters listed in letters
-    # letters is an iterable
-    # optional: prefix everything with the string start
-    @classmethod
-    def _strorbit(self,letters,start=''):
-        strings = [start]
-        currstr = start
-        for l in letters:
-            currstr = currstr + l
-            strings.append(currstr)
-        return strings
 
-    ################ END UTILITY FUNCTIONS ####################
-   
-
-
+################################################################################
+###################### CALCULATING PROBABILITIES ###############################
+################################################################################
 
     def transition_matrix(self,string):
         """
         Return transition matrix describing how the initial state distribution
         is updated after reading ``string``.
         """
-        A = identity_matrix(self.size) # this allows to cover the case where string is empty
+        A = identity_matrix(self.size) # this allows to cover the case where ``string`` is empty
         for ch in string:
             if not str(ch) in self.alphabet:
-                raise ValueError(f'{ch} not a valid letter of the alphabet')
-            A = A*self.transitions[ch]
+                raise ValueError(f'{ch} is not a valid letter of the alphabet {self.alphabet}')
+            A *= self.transitions[ch]
         return A
-
-    def is_accepting(self,state):
-        """
-        Return True iff ``state`` (which can only be a number for now) is accepting,
-        i.e., the final state distribution assigns a nonzero weight to it.
-        If self.ring == SR, always return True because there's no meaningful way to say
-        a state is *not* accepting in this case.
-        """
-        if self.ring == SR:
-            # no way to meaningfully say if a state is accepting in this case
-            return True 
-        return (self.accepting_states[state][0] != 0)
 
     def read(self,string=''):
         """
         Return the probability distribution on states (given as a vector) after
         reading ``string``.
         If ``string`` is empty, this in effect just returns
-        ``self.initial_states``.
+        ``self.initial``.
         """
-        return self.initial_states*self.transition_matrix(string)
+        return self.initial*self.transition_matrix(string)
 
     def trans_prob(self,state1,state2,string):
         """
@@ -234,36 +414,345 @@ class WeightedAutomaton:
             return self.transitions[string][index1][index2]
         else:
             return self.transition_matrix(string)[index1][index2]
-    
+   
+    def prob(self,string):
+        """
+        Return the acceptance probability of ``string`` with respect to
+        ``self``. This is the product of ``self``'s initial state vector,
+        the transition matrices for the letters of ``string`` (in order), and
+        ``self``'s final state vector.
+        """
+        return (self.read(string)*self.final)[0][0]
+        # (the [0][0] is because technically, the result of that product is a 1x1 matrix, not a number)
+
+    def probs(self,wordlist):
+        """
+        Return ProbabilityList of acceptance probabilities with respect to
+        ``self`` of every string in ``wordlist``.
+        """
+        thelist = ProbabilityList()
+        for w in wordlist:
+            thelist[w] = self.prob(w)
+        return thelist
+
+    def probs_of_length(self,thelength):
+        """
+        Wrapper around ``probs()`` that returns a ProbabilityList of
+        acceptance probabilities of every string of length ``thelength``.
+        """
+        wordlist = self.strings([thelength])
+        return self.probs(wordlist)
+
+    def gap(self,string,comparestrings=None,cutoff=False):
+        """
+        Return the gap of ``string`` with respect to ``self``. This is the
+        least difference between self.prob(``string``) and self.prob(x) where
+        x ranges over all other strings of the same length as ``string``.
+        (See Gill 2024 for a formal definition.)
+        This value is positive iff ``string`` has the highest acceptance
+        probability among strings of its length.
+        
+        If specified, ``comparestrings`` is a list of strings against which to
+        compare ``string``. If ``comparestrings`` is not specified, ``gap()``
+        will generate self.strings([len(``string``)]) on every run.
+        Generating this set in advance and passing it to ``gap()`` is useful to
+        save time in loops.
+        If ``cutoff`` is set to True, just return 0 if the gap isn't positive.
+        (Has no effect if self.ring == SR.)
+        """
+        if comparestrings == None: # compare with other strings of same length
+            usestrings = self.strings([len(string)])
+        else: # compare with strings given by caller
+            usestrings = comparestrings
+        myprob = self.prob(string)
+        # if over SR, in general we have to use a completely symbolic approach
+        if self.ring == SR:
+            funcs = []
+            for s in usestrings:
+                if s != string:
+                    funcs.append(myprob - self.prob(s))
+            return min_symbolic(funcs)
+        # otherwise we have a chance to be a bit more efficient
+        else:
+            thegap = 1 # initialize at max possible value because it's defined as a minimum
+            for s in usestrings:
+                if s == string: continue # don't compare against yourself
+                testgap = myprob - self.prob(s)
+                # if myprob isn't maximal (and we're cutting off at gap 0), immediately end
+                if testgap <= 0 and cutoff == True:
+                    return 0
+                if testgap < thegap:
+                    thegap = testgap
+            return thegap
+
+    def orbit(self,letters,start=''):
+        """
+        Return ProbabilityList of acceptance probabilities of every string
+        obtained by successively appending the characters listed in ``letters``
+        to ``start``.
+        """
+        stringsinorbit = [start]
+        currstr = start
+        for l in letters:
+            currstr += l
+            stringsinorbit.append(currstr)
+        return self.probs(stringsinorbit)
+
+    def strings(self,oflengths):
+        """
+        Return list of all possible strings drawn from self's alphabet, of
+        lengths given in the list ``oflengths``.
+
+        EXAMPLES::
+
+            (Suppose A is a WeightedAutomaton over the alphabet ['0','1'].)
+
+            sage: A.strings([2,3])
+            ['00', '01', '10', '11', '000', '001', '010', '011', '100', '101', '110', '111']
+
+            If B is a WeightedAutomaton over ['0', '12'], strings() will
+            represent each string as a tuple in order to avoid the ambiguity of
+            strings like '012':
+            
+            sage: B.strings([2])
+            [('0', '0'), ('0', '12'), ('12', '0'), ('12', '12')]
+        """
+        thelist = []
+        for i in oflengths:
+            if not WeightedAutomaton._isint(i):
+                raise TypeError(f'{i} is not a Sage or Python integer')
+            # if the max length of a letter is 1, make the outputs into actual
+            # strings, because they're unambiguous. Otherwise, each string needs
+            # to be represented as a list.
+            if self.letter_length() == 1:
+                morestrings = [WeightedAutomaton._tuptostr(it) for it in itertools.product(self.alphabet,repeat=i)]
+            else:
+                morestrings = list(itertools.product(self.alphabet,repeat=i))
+            thelist = thelist + morestrings
+        return thelist
+
+    def is_highest(self,teststring,comparestrings=None):
+        """
+        Return True iff ``teststring`` has the unique highest probability of
+        acceptance by ``self`` among all strings of length len(``teststring``).
+        This function is faster on average than computing all probabilities and
+        then comparing, because it immediately returns False when it finds
+        another string with higher probability than ``teststring``.
+
+        Optionally, you can specify a list ``comparestrings`` of strings against
+        which to compare ``teststring``'s probability. (This can save time in
+        loops.)
+        """
+        myprob = self.prob(teststring)
+        if comparestrings == None: # compare with other strings of same length (wasteful for loops!)
+            usestrings = self.strings([len(teststring)])
+        else: # compare with strings given by caller
+            usestrings = comparestrings
+        for s in usestrings:
+            if s == teststring: continue # don't compare against yourself
+            if self.prob(s) >= myprob:
+                return False
+        return True
+
+################################################################################
+############################# PROPERTIES #######################################
+################################################################################
+
+    def is_accepting(self,state):
+        """
+        Return True iff ``state`` (which can only be a number for now) is accepting,
+        i.e., the final state distribution assigns a nonzero weight to it.
+        """
+        return (self.final[state][0] != 0)
+
+    def is_dead_state(self,thestate):
+        """
+        Return True iff ``thestate`` is a nonaccepting state with no
+        out-transitions to other states (in other words, the weight of
+        ``thestate`` in ``self.final`` is 0, and all transitions from
+        ``thestates`` to other states have weight 0).
+        """
+        if not thestate in self.states:
+            raise ValueError('invalid state')
+        if self.is_accepting(thestate): return False
+        return all([(self.trans_prob(thestate,i,sigma) == 0) for sigma in self.alphabet \
+                for i in self.states if i != thestate])
+
+    def has_dead_state(self):
+        """
+        Return True iff ``self`` has a dead state, a nonaccepting state with no
+        nonzero out-transitions.
+        """
+        return any([self.is_dead_state(s) for s in self.states])
+
+    def is_pfa(self):
+        """
+        Return True iff ``self`` is a PFA (probabilistic finite-state automaton)
+        as defined in, e.g., the book by Salomaa (1969).
+        That is, return True iff the initial state vector and every row of every
+        transition matrix of ``self`` are stochastic vectors, and the final
+        state vector's entries are all either 0 or 1.
+        """
+        # first check initial state distribution
+        init = self.initial.dense_coefficient_list()
+        if not (0 <= min(init) <= max(init) <= 1) or not (sum(init) == 1):
+            return False
+        # now check matrices
+        for mat in self.transitions.values():
+            for r in range(self.size): # for each row in the transition matrix
+                if not (0 <= min(mat[r]) <= max(mat[r]) <= 1) or not (sum(mat[r]) == 1):
+                    return False
+        # finally, final states
+        for entry in self.final.dense_coefficient_list():
+            if entry != 0 and entry != 1:
+                return False
+        return True
+
+    def is_bistochastic(self):
+        """
+        Return True iff every transition matrix of ``self`` is bistochastic,
+        i.e., both row and column stochastic.
+        """
+        return all([m.is_bistochastic() for m in self.transitions.values()])
+
+    def is_actual(self):
+        """
+        Return True iff ``self`` is an actual automaton as defined by Rabin,
+        i.e., is a PFA and all transition probabilities are strictly positive.
+        """
+        return (self.is_pfa() and all([all([p>0 for p in m.dense_coefficient_list()]) \
+                    for m in self.transitions.values()]))
+
+    def letter_length(self):
+        """
+        Return the longest length of a single letter in ``self``'s alphabet.
+        """
+        return max([len(l) for l in self.alphabet])
+
+    def initial_weight(self,thestate):
+        """
+        Return the weight of ``thestate`` in the initial state vector of
+        ``self``.
+        """
+        if not thestate in self.states:
+            raise ValueError(f'invalid state {thestate}')
+        return self.initial[0][thestate]
+
+    def final_weight(self,thestate):
+        """
+        Return the weight of ``thestate`` in the final state vector of
+        ``self``.
+        """
+        if not thestate in self.states:
+            raise ValueError(f'invalid state {thestate}')
+        return self.final[thestate,0]
+
+################################################################################
+########################## MODIFICATIONS #######################################
+################################################################################
+
+    def change_ring(self,newring):
+        """
+        Return new WeightedAutomaton obtained by coercing each of ``self``'s
+        transition matrices and initial/final vectors to be over ring
+        ``newring``.
+        """
+        return WeightedAutomaton(self.transitions,self.initial,
+                                 self.final,ring=newring)
+
+    def add_letter(self,letter,newtransitions=None):
+        """
+        Return new WeightedAutomaton which is ``self`` with alphabet augmented
+        by ``letter`` and with the transition matrix for ``letter`` given by
+        ``newtransitions``. If ``newtransitions`` is unspecified, it will be set
+        to the identity matrix of size ``self``.size.
+        If ``letter`` is already in ``self``'s alphabet, throw an error.
+        """
+        if str(letter) in self.alphabet:
+            raise IndexError(f'letter {letter} is already in the alphabet')
+        newdict = deepcopy(self.transitions)
+        if newtransitions == None:
+            newdict[letter] = identity_matrix(self.size)
+        else:
+            # we'll let the constructor handle if ``newtransitions`` isn't what
+            # it's supposed to be
+            newdict[letter] = newtransitions
+        return WeightedAutomaton(newdict,self.initial,self.final, \
+                                 ring=self.ring)
+
+    def delete_letter(self,letter):
+        """
+        Return new WeightedAutomaton which is ``self`` with ``letter`` removed
+        from the alphabet along with its transition matrix.
+        """
+        if not letter in self.alphabet:
+            raise IndexError(f'{letter} is not in the alphabet')
+        newdict = deepcopy(self.transitions)
+        newdict.pop(letter)
+        return WeightedAutomaton(newdict,self.initial,self.final,ring=self.ring)
+
     def swap_states(self,state1,state2):
         """
-        Permute ``state1`` and ``state2``. Easy wrapper for ``permute_states()``
-        so you don't have to create PermutationGroupElement instances every
-        time. ``state1`` and ``state2`` should be the actual state labels
-        (currently these are always numbers indexed from 0).
+        Return new WeightedAutomaton consisting of ``self`` with ``state1`` and
+        ``state2`` switched. These inputs can be either the actual indices of
+        states or the state labels (not yet implemented). This operation has no
+        effect on acceptance probabilities.
         """
         if not (state1 in self.states and state2 in self.states):
             raise ValueError('you must specify two valid states')
-        # same ugliness comment as in trans_prob()
-        # FIXME: whenever i fix permute_states(), it'll be unnecessary to add 1 here
-        index1 = self.states.index(state1)+1
-        index2 = self.states.index(state2)+1
-        permgroup = PermutationGroup([(index1,index2)])
-        self.permute_states(permgroup.gens()[0])
+        # same ugliness comment as in trans_prob(). And redundant for now.
+        index1 = self.states.index(state1)
+        index2 = self.states.index(state2)
+        newdict = deepcopy(self.transitions)
+        for m in newdict.values():
+            m.swap_rows(index1,index2)
+            m.swap_columns(index1,index2)
+        return WeightedAutomaton(newdict,
+                                 self.initial.with_swapped_columns(index1,index2),
+                                 self.final.with_swapped_rows(index1,index2),
+                                 ring=self.ring)
 
-    # apply permutation, a PermutationGroupElement, to the set of states.
-    # Actually (FIXME), it has to be a permutation of the set {1,...,self.size}, because
-    # Sage insists on indexing matrix rows and columns starting at 1 and i can't
-    # figure out how to take a permutation and just rename the underlying set.
-    def permute_states(self,permutation):
-        if type(permutation) != sage.groups.perm_gps.permgroup_element.PermutationGroupElement:
-            raise TypeError('PermutationGroupElement expected')
+    # TODO: flesh out as indicated
+    def add_states(self,nstates=1):
+        """
+        Return new WeightedAutomaton which is ``self`` with ``nstates`` new
+        states added after all existing states.
+        In the future, this will let you insert the new states at any position,
+        and will support arbitrary state labels.
+        The new states will have initial and final weight 0, no other state will
+        transition to them, they will not transition to any other state, and
+        each will transition to itself with probability 1 when reading any
+        letter. Hence the output WeightedAutomaton has the same acceptance
+        probability function as ``self``.
+        """
+        if nstates < 0:
+            raise ValueError('cannot add a negative number of states')
+        newinitial = self.initial.augment(matrix(self.ring,[0]*nstates))
+        newfinal = self.final.stack(column_matrix([0]*nstates))
+        newdict = {}
         for a in self.alphabet:
-            self.transitions[a] = \
-                self.transitions[a].with_permuted_rows_and_columns(permutation,permutation)
-        self.initial_states = self.initial_states.with_permuted_columns(permutation)
-        self.accepting_states = self.accepting_states.with_permuted_rows(permutation)
+            newdict[a] = self.transitions[a].block_sum(
+                            identity_matrix(nstates,nstates))
+        return WeightedAutomaton(newdict,newinitial,newfinal,ring=self.ring)
 
+    def delete_states(self,statelist):
+        """
+        Return new WeightedAutomaton which is ``self`` with each of the states
+        in ``statelist`` deleted.
+        """
+        if not all([s in self.states for s in statelist]):
+            raise IndexError(f'{statelist} contains invalid states')
+        indexlist = [self.states.index(s) for s in statelist] # for when i allow arbitrary state labels
+        newinit = self.initial.delete_columns(indexlist)
+        newfinal = self.final.delete_rows(indexlist)
+        newtrans = {}
+        for a in self.alphabet:
+            newtrans[a] = (self.transitions[a].delete_rows(indexlist)
+                .delete_columns(indexlist))
+        return WeightedAutomaton(newtrans,newinit,newfinal,ring=self.ring)
+
+    # TODO: decide if it's too fussy to allow to reweight in every one of these
+    # methods. Maybe normalize[d]() should be the only place to do it.
     def set_transition(self,state1,state2,letter,value,reweight=False):
         """
         Change (probability of going from ``state1`` to ``state2`` when reading
@@ -282,17 +771,18 @@ class WeightedAutomaton:
         # array structure of the matrices!
         index1 = self.states.index(state1)
         index2 = self.states.index(state2)
-        self.transitions[letter][index1,index2] = value
+        castvalue = self.ring(value)
+        self.transitions[letter][index1,index2] = castvalue
         if reweight:
-            restofrowsum = sum(self.transitions[letter][index1]) - value
+            restofrowsum = sum(self.transitions[letter][index1]) - castvalue
             if restofrowsum != 0:
                 for n in range(self.size): # for each entry in that row
                     if n != index2: # only change the entries we didn't set above
-                        self.transitions[letter][index1,n] *= (1-value)/restofrowsum
+                        self.transitions[letter][index1,n] *= (1-castvalue)/restofrowsum
             else:
                 # this means the only way to make the row sum to 1 is actually to change
                 # the [index1,index2] entry to 1 (overriding the caller's value)
-                self.transitions[letter][index1,index2] = 1
+                self.transitions[letter][index1,index2] = self.ring(1)
 
     def set_initial(self,state,value,reweight=False):
         """
@@ -301,191 +791,270 @@ class WeightedAutomaton:
         If ``reweight`` is set to True, do the same rescaling as in
         ``set_transition()`` but applied to the initial state vector.
         """
+        if not state in self.states:
+            raise IndexError(f'{state} is not a valid state')
         theindex = self.states.index(state)
-        self.initial_states[0,theindex] = value
+        castvalue = self.ring(value)
+        self.initial[0,theindex] = castvalue
         # FIXME: this code is basically duplicated from above. Figure out how to
         # farm out both into another method without running into immutability
         # issues.
         if reweight:
-            restofrowsum = sum(self.initial_states[0]) - value
+            restofrowsum = sum(self.initial[0]) - castvalue
             if restofrowsum != 0:
                 for n in range(self.size): # for each entry in the vector
                     if n != theindex: # only change the entries we didn't set above
-                        self.initial_states[0,n] *= (1-value)/restofrowsum
+                        self.initial[0,n] *= (1-castvalue)/restofrowsum
             else:
-                self.initial_states[0,theindex] = 1
+                self.initial[0,theindex] = self.ring(1)
 
-    def set_final_vector(self,newvector_list):
+    def set_final(self,state,value):
         """
-        QoL method to quickly change self.accepting_states to the column vector
-        represented by ``newvector_list``.
+        Set the weight of ``state`` in the final state vector to ``value``.
         """
-        if len(newvector_list) != self.size:
-            raise TypeError('length of given vector != size of automaton')
-        self.accepting_states = matrix(newvector_list).transpose()
+        if not state in self.states:
+            raise IndexError(f'{state} is not a valid state')
+        theindex = self.states.index(state)
+        self.final[theindex,0] = self.ring(value)
 
-    def normalize(self,letter=None,row=None,doinitialstates=True):
+
+    def with_initial_vector(self,newinitial):
+        """
+        Return a copy of ``self`` with initial state vector replaced with
+        ``newinitial``.
+        """
+        return WeightedAutomaton(self.transitions,newinitial,self.final,
+                                 ring=self.ring)
+
+    def with_final_vector(self,newfinal):
+        """
+        Return a copy of ``self`` with final state vector replaced with
+        ``newfinal``.
+        """
+        return WeightedAutomaton(self.transitions,self.initial,newfinal,
+                                 ring=self.ring)
+
+    # TODO: allow more flexibility. Maybe have a separate normalize_all()
+    # and then separate methods where you need to specify exactly which things
+    # you want to normalize.
+    # Also, what about self.final?
+    def normalized(self,letters=None,rows=None,doinitialstates=True):
         """
         Normalize each row vector of self to sum to 1 (initial state vector and
         all rows of all transition matrices).
-        Optional: specify which ``letter``'s transition matrix to do (default all);
-                  specify which ``row`` to do (default all);
+        Optional: specify which ``letters``'s transition matrices to do (default all);
+                  specify which ``rows`` to do (default all);
                   specify whether to also do the initial state vector (default yes)
+        ``letters`` and ``rows`` should be lists.
         If a row sum is 0, leave it unchanged. Ditto the initial state vector.
+
+        If ``self`` is a PFA, the output is identical to ``self``.
         """
-        if letter == None: doletters = self.alphabet
-        else: doletters = [letter]
-        if row == None: dorows = range(self.size)
-        else: dorows = [row]
+        if letters == None:
+            letters = self.alphabet
+        if rows == None:
+            rows = range(self.size)
+        newinitial = deepcopy(self.initial)
+        newdict = deepcopy(self.transitions)
         if doinitialstates:
-            thesum = sum(self.initial_states.coefficients())
+            thesum = sum(self.initial.coefficients())
             if thesum != 0:
-                self.initial_states /= thesum
-        for l in doletters:
-            for r in dorows:
+                newinitial /= thesum
+        for l in letters:
+            for r in rows:
                 thesum = sum(self.transitions[l][r].coefficients())
                 if thesum != 0:
-                    self.transitions[l][r] /= thesum
+                    newdict[l][r] /= thesum
+        return WeightedAutomaton(newdict,newinitial,self.final,ring=self.ring)
 
-    def prob(self,string):
+    def subs(self, *args, **kwds):
         """
-        Return the acceptance probability of ``string``.
-        """
-        return (self.read(string)*self.accepting_states)[0][0]
-        # (the [0][0] is because technically, the result of that product is a 1x1 matrix, not a number)
+        Substitute values for the variables used in the initial and final
+        vectors and transition matrices of ``self``, and return the resulting
+        WeightedAutomaton.
+       
+        The output will have the same ring as ``self``.
 
-    def probs(self,wordlist):
+        As with Sage's variable substition for matrices, the arguments are
+        passed unchanged to the method ``subs`` of each matrix and vector.
         """
-        Return ProbabilityList of acceptance probabilities of every string
-        in ``wordlist``.
+        newdict = dict(zip(self.alphabet, [m.subs(*args,**kwds) for m in
+                                           self.transitions.values()]))
+        return WeightedAutomaton(newdict, self.initial.subs(*args,**kwds),
+                                 self.final.subs(*args,**kwds), ring=self.ring)
+
+################################################################################
+########################## ALGEBRAIC OPERATIONS ################################
+################################################################################
+
+    def transpose(self):
         """
-        thelist = ProbabilityList()
-        for w in wordlist:
-            thelist[w] = self.prob(w)
-        return thelist
+        Return the transpose of ``self``, that is, the WeightedAutomaton which
+        is ``self`` with initial and final state vectors switched and all
+        transition matrices transposed.
+        
+        The acceptance probability of x with respect to ``self.transpose()`` is
+        equal to the acceptance probability of the reversal of x with respect to
+        ``self`` for every string x.
 
-    def probs_of_length(self,thelength):
+        Note that the output is *not* necessarily a PFA when ``self`` is.
         """
-        Wrapper around ``probs()`` that returns a ProbabilityList of
-        acceptance probabilities of every string of length ``thelength``.
+        newdict = {}
+        for a in self.alphabet:
+            newdict[a] = self.transitions[a].transpose()
+        return WeightedAutomaton(newdict, self.final.transpose(),
+                                 self.initial.transpose(), ring=self.ring)
+
+    def complement(self):
         """
-        wordlist = self.strings([thelength])
-        return self.probs(wordlist)
-
-    # return gap(string). This is the minimum difference of rho(string)
-    # and rho(x) over all strings with |x|=|string| and x!=string.
-    # Note that if self doesn't witness an upper bound for A_P(string), this
-    # value will be nonpositive.
-    # If specified, comparestrings is a list/tuple of strings against which to compare string
-    # (If comparestrings is not specified, this function will generate the list
-    # of strings of length |string| for comparison on every run, so if you're
-    # going to be running this a lot of times you should really declare the
-    # list of strings in advance and pass it to the function.)
-    # If cutoff=True, just return 0 if the gap isn't positive. (Has no effect if we're over SR.)
-    def gap(self,string,comparestrings=None,cutoff=False):
-        if comparestrings == None: # compare with other strings of same length
-            usestrings = self.strings([len(string)])
-        else: # compare with strings given by caller
-            usestrings = comparestrings
-        # if over SR, we'll use a completely symbolic approach
-        if self.ring == SR:
-            funcs = []
-            for s in usestrings:
-                if s != string:
-                    funcs.append(self.prob(theword) - self.prob(s))
-            return min_symbolic(funcs)
-        # otherwise we have a chance to be a bit more efficient
-        else:
-            thegap = 1 # initialize at max possible value because it's defined as a minimum
-            myprob = self.prob(string)
-            for s in usestrings:
-                if s == string: continue # don't compare against self
-                testgap = myprob - self.prob(s)
-                # if myprob isn't maximal (and we're cutting off at gap 0), immediately end
-                if testgap <= 0 and cutoff == True:
-                    return 0
-                if testgap < thegap:
-                    thegap = testgap
-            return thegap
-
-    def orbit(self,letters,start=''):
+        Return a copy of ``self`` whose final state vector is replaced by a
+        vector of 1s subtracted from ``self``.final. The result has the same
+        size as ``self``.
+       
+        If ``self`` is a PFA, the output M is also a PFA and satisfies 
+            M.prob(x) = 1 - ``self``.prob(x)
+        for every string x.
         """
-        Return ProbabilityList of acceptance probabilities of every string
-        obtained by successively appending the characters listed in ``letters``.
-        Optional: prefix everything with the string ``start``.
+        return WeightedAutomaton(self.transitions, self.initial,
+                                 matrix.ones(self.ring,self.size,1) - self.final, 
+                                 ring=self.ring)
+
+    def scaled(self,scalefactor):
         """
-        return self.probs(WeightedAutomaton._strorbit(letters,start))
+        Return the WeightedAutomaton which is the tensor product of ``self``
+        with a 2-state PFA whose acceptance probability is identically equal to
+        ``scalefactor``. If M is the result, then M satisfies
+            M.prob(x) = scalefactor * self.prob(x)
+        for all strings x, and M.size = self.size * 2.
 
-    # TODO: this is obviously really wasteful when getting used in loops with a bajillion calculations!
-    def strings(self,oflengths):
+        If ``self`` is a PFA and ``scalefactor`` is between 0 and 1, then
+        ``self.scaled()`` is also a PFA. This is not generally true of the
+        expression ``scalefactor*self``, which just multiplies ``self.initial``
+        by ``scalefactor``.
         """
-        Return list of all possible strings drawn from self's alphabet, of
-        lengths ``oflengths`` (an iterable).
+        return self.tensor_product(WeightedAutomaton.constant(self.ring(scalefactor),
+                                                              self.alphabet))
 
-        EXAMPLES::
-
-            (Suppose A is a WeightedAutomaton over the alphabet ['0','1'].)
-
-            sage: A.strings([2,3])
-            ['00', '01', '10', '11', '000', '001', '010', '011', '100', '101', '110', '111']
+    def direct_sum(self,other):
         """
-        thelist = []
-        for i in oflengths:
-            if not WeightedAutomaton._isint(i):
-                raise TypeError(f'{i} is not a Sage or Python integer')
-            thelist = thelist + [WeightedAutomaton._tuptostr(it) for it in itertools.product(self.alphabet,repeat=i)]
-        return thelist
+        Return the direct sum of ``self`` with ``other``. This is the
+        WeightedAutomaton whose initial and final state vectors are the
+        concatenations of those of ``self`` and ``other``, respectively, and
+        whose transition matrices are the block sums of those for ``self`` and
+        ``other``. If ``self`` and ``other`` are both PFAs, their direct sum is
+        again a PFA.
 
-    # return True iff teststring has the highest prob among strings of its length
-    # optional: among strings in the list/tuple comparestrings (if given)
-    # this is faster in the best case than computing all probs and comparing, because it returns False as soon as it finds another string with prob >= prob of teststring
-    def is_highest(self,teststring,comparestrings=None):
-        if self.ring == SR:
-            raise TypeError("symbolic probabilities can't be ordered")
-        myprob = self.prob(teststring)
-        if comparestrings == None: # compare with other strings of same length (wasteful for loops!)
-            usestrings = self.strings([len(teststring)])
-        else: # compare with strings given by caller
-            usestrings = comparestrings
-        for s in usestrings:
-            if s == teststring: continue # don't compare against yourself
-            if self.prob(s) >= myprob:
-                return False
-        return True
+        If M = self.direct_sum(other), then M satisfies
+            M.prob(x) = self.prob(x) + other.prob(x)
+        for all strings x. Also M.size = self.size + other.size.
+        """
+        if not isinstance(other,WeightedAutomaton):
+            raise TypeError('you can only take the direct sum of two WeightedAutomata')
+        if not (self.alphabet == other.alphabet and self.ring == other.ring):
+            raise TypeError('you can only take the direct sum of two WeightedAutomata over the same alphabet and coefficient ring')
+        newinit = self.initial.augment(other.initial)
+        newfinal = self.final.stack(other.final)
+        newtrans = {}
+        for a in self.alphabet:
+            newtrans[a] = self.transitions[a].block_sum(other.transitions[a])
+        return WeightedAutomaton(newtrans,newinit,newfinal,ring=self.ring)
+
+    def elementwise_sum(self,other,selfweight=1,otherweight=1):
+        """
+        Return a WeightedAutomaton whose initial and final state vectors and
+        transition matrices are equal to the sums of the respective quantities
+        for ``self`` and ``other``. That is, if M is the returned
+        WeightedAutomaton, we have
+            M.initial = self.initial+other.initial; 
+            M.final = self.final+other.final; and 
+            M.transitions[a] = self.transitions[a] + other.transitions[a] 
+        for every letter a.
+
+        Optionally, you can set ``selfweight`` and/or ``otherweight`` to
+        multiply every entry of the initial vector, final vector, and transition
+        matrices of ``self`` by ``selfweight``, and likewise for ``otherweight``
+        and ``other``.
+
+        If some letter `b` is present in one of ``self``'s or ``other``'s
+        alphabets but not in the other, then the returned WeightedAutomaton will
+        have transition matrix for `b` equal to either ``self``'s or ``other``'s
+        transition matrix for `b`, respectively.
+
+        If ``self`` and ``other`` are both PFAs over the same alphabet, and if
+        ``selfweight`` and ``otherweight`` are nonnegative numbers whose sum is
+        1, then ``self.elementwise_sum(other,selfweight,otherweight)`` is also a
+        PFA. In effect the result is a convex combination of ``self`` and
+        ``other`` viewed as vectors in euclidean space.
+        """
+        if not isinstance(other,WeightedAutomaton):
+            raise TypeError('you can only take the elementwise sum of two WeightedAutomata')
+        if not (self.size == other.size and self.ring == other.ring):
+            raise TypeError('elementwise sum only defined for WeightedAutomata of the same size and over the same coefficient ring')
+        selfweight = self.ring(selfweight)
+        otherweight = self.ring(otherweight)
+        newdict = {}
+        newinit = selfweight*self.initial + otherweight*other.initial
+        newfinal = selfweight*self.final + otherweight*other.final
+        for a in self.alphabet:
+            newdict[a] = selfweight*self.transitions[a]
+        for a in other.alphabet:
+            # if a letter appears in both alphabets, add their matrices
+            if a in self.alphabet:
+                newdict[a] += otherweight*other.transitions[a]
+            # if not, then just append other's transition matrix
+            else:
+                newdict[a] = otherweight*other.transitions[a]
+        return WeightedAutomaton(newdict,newinit,newfinal,ring=self.ring)
+
+    def direct_product(self,other):
+        """
+        Return the direct product of ``self`` with ``other``. This is the
+        WeightedAutomaton with ``self``'s initial state vector, ``other``'s
+        final state vector, and whose transition matrix for letter a is
+        equal to self.transitions[a] * other.transitions[a].
+
+        Only defined between two WeightedAutomata over the same alphabet and
+        with the same number of states. If ``self`` and ``other`` are both PFAs,
+        their direct product is again a PFA of the same size.
+        """
+        if not isinstance(other,WeightedAutomaton):
+            raise TypeError('you can only take the direct product of two WeightedAutomata')
+        if not (self.size == other.size and self.alphabet == other.alphabet):
+            raise TypeError('direct product only defined for WeightedAutomata of the same size over the same alphabet')
+        newdict = {}
+        for a in self.alphabet:
+            newdict[a] = (self.transitions[a]*other.transitions[a])
+        return WeightedAutomaton(newdict, self.initial,
+                                 other.final, ring=self.ring)
     
-    # return True iff thestate is a nonaccepting state with no out-transitions to other states
-    # no out-transitions <-> P_sigma(i,thestate) = 0 for each sigma and i!=thestate
-    def is_dead_state(self,thestate):
-        if self.is_accepting(thestate): return False
-        return all([(self.trans_prob(thestate,i,sigma) == 0) for sigma in self.alphabet \
-                for i in self.states if i != thestate])
+    def tensor_product(self,other):
+        """
+        Return the tensor product of ``self`` with ``other``. This is the
+        WeightedAutomaton whose initial and final state vectors and transition
+        matrices are the tensor (Kronecker) products of the respective vectors
+        and matrices for ``self`` and ``other``. If ``self`` and ``other`` are
+        both PFAs, their tensor product is again a PFA.
 
-    # return True iff self has a dead state
-    def has_dead_state(self):
-        return any([self.is_dead_state(s) for s in self.states])
-
-    # return True iff self is a PFA as defined in, e.g., Salomaa (1969):
-    # initial states and all matrix rows are stochastic vectors, accepting states is a 0-1 vector
-    def is_pfa(self):
-        # first check initial state distribution
-        init = self.initial_states[0]
-        if not (0 <= min(init) <= max(init) <= 1) or not (0 <= sum(init) <= 1):
-            return False
-        # now check matrices
-        for mat in self.transitions.values():
-            for r in range(self.size): # for each row in the transition matrix
-                if not (0 <= min(mat[r]) <= max(mat[r]) <= 1) or not (0 <= sum(mat[r]) <= 1):
-                    return False
-        # finally, accepting states
-        for entry in self.accepting_states.transpose()[0]:
-            if entry != 0 and entry != 1:
-                return False
-        return True
+        If M = self.tensor_product(other), then M satisfies
+            M.prob(x) = self.prob(x) * other.prob(x)
+        for all strings x. Also M.size = self.size * other.size.
+        """
+        if not isinstance(other,WeightedAutomaton):
+            raise TypeError('you can only take the tensor product of two WeightedAutomata')
+        if not (self.alphabet == other.alphabet and self.ring == other.ring):
+            raise TypeError('you can only take the tensor product of two WeightedAutomata over the same alphabet and coefficient ring')
+        newinit = self.initial.tensor_product(other.initial, subdivide=False)
+        newfinal = self.final.tensor_product(other.final, subdivide=False)
+        newdict = {}
+        for a in self.alphabet:
+            newdict[a] = self.transitions[a].tensor_product(other.transitions[a], subdivide=False)
+        return WeightedAutomaton(newdict,newinit,newfinal,ring=self.ring)
 
 
 
-
-#------------------------------------------------------------------
+################################################################################
+################################################################################
+################################################################################
 
 class ProbabilityList(dict):
     def to_sorted(self):
@@ -518,46 +1087,54 @@ class ProbabilityList(dict):
         """
         return set(len(s) for s in self.keys())
 
-    # if oflength=None, return highest-prob strings among all strings in the dict's keys
-    # otherwise, expects a Sage or Python integer. Return highest-prob strings among all strings of length oflength in the dict's keys
-    # format in either case: a list whose first entry is the probability and whose subsequent entries are the strings of that probability
     # TODO: kind of awkwardly written. Harmonize with highest_gap().
     def highest_prob(self,oflength=None):
+        """
+        Return the highest-probability strings among all strings in ``self``'s
+        keys (if ``oflength``==None), or only among all strings of length
+        ``oflength`` in ``self``'s keys (if ``oflength`` is set).
+        Output: a list whose first entry is the highest probability and whose
+        subsequent entries are all the strings of that probability.
+        """
         # define usestrings to be the list of actual strings to compare
         if oflength == None:
             usestrings = list(self.keys())
         else:
             if not WeightedAutomaton._isint(oflength):
-                raise TypeError('length must be a valid Sage or Python integer')
+                raise TypeError(f'{oflength} is not a valid Sage or Python integer')
             if not oflength in self.lengths():
                 raise ValueError(f'no strings of length {oflength} are present')
             usestrings = [k for k in self.keys() if len(k) == oflength]
         returnlist = []
         maxprob = max([self[w] for w in usestrings])
-        returnlist.append(maxprob) # make the prob the first entry
+        returnlist.append(maxprob) # make the probability the first entry
         for w in usestrings:
-            # list all strings with that probability
+            # append all strings with that probability
             if self[w] == maxprob:
                 returnlist.append(w)
         return returnlist
 
-    # Return gap between the two highest-prob strings of length oflength. If oflength
-    # not specified, return gap between two highest-prob strings present in self.
-    # Output: a list in the form [gap, highest-prob string, second-highest-prob string]
-    # If numerical=True, give the gap as a numerical approximation (useful if
-    # you want to get a quick idea of the value)
     def highest_gap(self,oflength=None,numerical=False):
+        """
+        Return the gap between the two highest-probability strings among the
+        keys of ``self``, or only among those of length ``oflength`` if the
+        latter is specified.
+        Output: a list in the form [gap, highest-prob string,
+        second-highest-prob string].
+        If ``numerical`` is set to True, the gap is listed as a decimal
+        approximation (useful if you want to get a quick idea of the value).
+        """
         # if the caller specified a length, it must be a valid length
         if oflength != None:
             if not WeightedAutomaton._isint(oflength):
-                raise TypeError('length must be a valid Sage or Python integer')
+                raise TypeError(f'{oflength} is not a valid Sage or Python integer')
             if not oflength in self.lengths():
                 raise ValueError(f'no strings of length {oflength} are present')
             # compare only between strings of length oflength
             compare = self.slice(oflength)
         else:
             # compare between strings of all lengths represented in self.
-            # (obviously this will not actually produce a true 'gap' if more
+            # (Obviously this will not actually produce a true 'gap' if more
             # than one length is present. Presumably the caller knows that.)
             compare = self
         # get 2 strings of highest prob, in order (using optimized library function)
@@ -565,16 +1142,6 @@ class ProbabilityList(dict):
         # prefix the list with the difference between their probs
         returncompare = compare[highest2[0]] - compare[highest2[1]]
         if numerical:
-            return [returncompare.n()] + highest2
-        else:
-            return [returncompare] + highest2
+            returncompare = returncompare.n()
+        return [returncompare] + highest2
     # TODO: it's weird to have highestgap() here but gap() in the PFA class. Maybe have both in both places, with the ones in PFA just being "compute the prob list, then run the PL func"?
-    #       one issue would be the extra overhead of taking the slice when you already know everything is of the correct length
-
-
-
-
-
-#SC = WeightedAutomaton._unpicklefile("stoch_complexity")
-#NC = WeightedAutomaton._unpicklefile("nfa_complexity") # contains NFA complexities of binary strings of length <= 10
-#SW = WeightedAutomaton._loadwits("witnesses")
