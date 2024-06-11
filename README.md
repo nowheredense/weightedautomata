@@ -20,19 +20,20 @@ comments describing the usage of every function.
 
 ## Files
 * ``WeightedAutomaton.py``: WeightedAutomaton and auxiliary ProbabilityList classes
-* ``witnesses.pickle``: an archive of many witnesses to the [PFA
+* ``witnesses``: a Deflate (zlib)-compressed archive of many witnesses to the [PFA
   complexity](https://arxiv.org/abs/2402.13376) of binary strings through length
   9 and beyond
 
 ## Installation
-Requires Sage 9.x or higher (for Python 3). Tested in 9.4.
+Requires Sage 9.x or higher (for Python 3). Tested in 9.4. The code heavily uses
+native Sage functionality and cannot run in Python alone.
 
 To use, just copy WeightedAutomaton.py into the working directory and run
  
     sage: load("WeightedAutomaton.py")
 
-If you also want the database of witnesses, download
-``witnesses.pickle`` to the working directory and run, e.g.,
+If you also want the database of PFA complexity witnesses, download the file
+``witnesses`` to the working directory and run, e.g.,
 
     sage: SW = WeightedAutomaton._loadwits("witnesses")
     
