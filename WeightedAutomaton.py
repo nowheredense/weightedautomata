@@ -199,22 +199,32 @@ class WeightedAutomaton(SageObject):
 ################################################################################
 
     @classmethod
-    def from_dump(self,dumpedstring,thering=QQ):
+    def from_list(self,thelist,ring=QQ):
+        """
+        Return a WeightedAutomaton instance reconstructed from a list
+        ``thelist'' in the format returned by ``list()``.
+        Optional: specify a ring ``ring`` into which to coerce all entries
+        of all matrices and vectors (default QQ).
+        """
+        return WeightedAutomaton(thelist[0],thelist[1],thelist[2],ring=ring)
+
+    @classmethod
+    def from_dump(self,dumpedstring,ring=QQ):
         """
         Return a WeightedAutomaton instance reconstructed from ``dumpedstring``,
         a string describing a WA exactly in the format output by
         ``dump_as_strings()``.
-        Optional: specify a ring ``thering`` into which to coerce all entries
+        Optional: specify a ring ``ring`` into which to coerce all entries
         of all matrices and vectors (default QQ).
         """
         preparetrans = {}
         mysize = len(dumpedstring[1])
         for k in dumpedstring[0].keys():
             preparetrans[k] = matrix(mysize,mysize,
-                    [thering(i) for i in dumpedstring[0][k]])
+                    [ring(i) for i in dumpedstring[0][k]])
         return WeightedAutomaton(preparetrans,
-            [thering(c) for c in dumpedstring[1]],
-            [thering(c) for c in dumpedstring[2]], ring=thering)
+            [ring(c) for c in dumpedstring[1]],
+            [ring(c) for c in dumpedstring[2]], ring=ring)
 
     @classmethod
     def madic(self,homo,reverse=False):
@@ -285,9 +295,9 @@ class WeightedAutomaton(SageObject):
         """
         myinit = [value,1-value]
         myfinal = [1,0]
-        mydict = {}
-        for a in alph:
-            mydict[str(a)] = matrix(base_ring(value), [myinit, myinit])
+        # every transition matrix is the same, with all rows equal to myinit
+        mydict = dict(zip(alph,
+                      [matrix(base_ring(value),[myinit]*2)] * len(alph)))
         return WeightedAutomaton(mydict,myinit,myfinal,
                                  ring=base_ring(value))
 
@@ -371,23 +381,8 @@ class WeightedAutomaton(SageObject):
         for k in rawSW.keys():
             newSW[k] = []
             for w in rawSW[k]:
-                newSW[k].append(WeightedAutomaton.from_dump(w,thering=QQ))
+                newSW[k].append(WeightedAutomaton.from_dump(w,ring=QQ))
         return newSW
-
-    @classmethod
-    def _listtoclass(self,witness):
-        """
-        Convert a list or tuple ``witness'' specifying a WeightedAutomaton (as
-        in output of ``list()``) to a WeightedAutomaton instance.
-        """
-        return WeightedAutomaton(witness[0],witness[1],witness[2])
-
-    @classmethod
-    def _tuptostr(self,atuple):
-        """
-        Return a string that is everything in ``atuple`` concatenated.
-        """
-        return ''.join([str(t) for t in atuple])
 
 
 ################################################################################
@@ -542,10 +537,11 @@ class WeightedAutomaton(SageObject):
             if not WeightedAutomaton._isint(i):
                 raise TypeError(f'{i} is not a Sage or Python integer')
             # if the max length of a letter is 1, make the outputs into actual
-            # strings, because they're unambiguous. Otherwise, each string needs
-            # to be represented as a list.
+            # strings, because they're unambiguous and easier to work with.
+            # Otherwise, each string needs to be represented as a list.
             if self.letter_length() == 1:
-                morestrings = [WeightedAutomaton._tuptostr(it) for it in itertools.product(self.alphabet,repeat=i)]
+                morestrings = [''.join([str(c) for c in it]) 
+                               for it in itertools.product(self.alphabet,repeat=i)]
             else:
                 morestrings = list(itertools.product(self.alphabet,repeat=i))
             thelist = thelist + morestrings
