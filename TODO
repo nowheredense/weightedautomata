@@ -1,6 +1,8 @@
 This is a sloppily formatted todo list plucked from the working version of
 WeightedAutomaton.py. It excludes various inline TODOs still in that file.
 
+- Add import statements locally to make sure all the native Sage methods i use
+  are within scope
 - Add examples (and note in docstrings) how to get around the issue of ambiguity
   of strings like '0123' if '12' is a single letter in the alphabet. (Everything
   works if you pass in lists/tuples---just need to be careful to do that.)
@@ -17,7 +19,6 @@ TO IMPLEMENT (from old code):
   bruteforce() family of functions
     - Would it be worth it to still keep around versions which only give you
       matrix dicts?
-  multiplypfa() <- no. easy enough to do by hand.
   LOW PRIORITY - autgraph() etc (to create a digraph)
   pathlist()
   pfa2ifs() and friends
@@ -26,15 +27,11 @@ TO IMPLEMENT (from old code):
   subdivision. Allow options to set single initial and final vectors, with the
   default being to also bruteforce all subdivisions of those.
 
-- Algebraic operations on WAs: "tensor sum" (Paz)
+- Algebraic operations on WAs: "tensor sum" (Paz) - fix
 
 - Constructor from transitions (given as rules, not matrices)
-      fetch a single specified trans prob - and change one (w/o giving a whole new matrix)
-      change initial distribution, etc, without having to give a matrix object
 - Also, a version where you can have it fill in the last entry of each row for
   you instead of you having to do it manually.
-- Also, one to create a symbolic WA of a given size without you having to do the
-  variables yourself
 
 - Return an equivalent PFA from a given WA, via Turakainen?
 - Implement Tseng's algorithm to test for equality of acc.prob. functions of two
