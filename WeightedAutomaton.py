@@ -75,7 +75,7 @@ class WeightedAutomaton(SageObject):
         # constructor, which is planned in a future update, to
         # allow the user to access the symbolic variables used in a WA over SR.
         # (and it might be turned into a function anyway)
-        ###self.vars = None
+        self.vars = None
 
     def __repr__(self):
         return "Weighted finite automaton over the alphabet %s and coefficients in %s with %s states"%(self.alphabet,str(self.ring),self.size)
@@ -164,14 +164,34 @@ class WeightedAutomaton(SageObject):
         print("Initial state distribution:", list(self.initial[0]))
         print("Final state distribution:", list(self.final.transpose()[0]))
 
-    # TODO: come up with a better name (and write docstring)
     def dump_as_strings(self):
+        """
+        Return a list representation of ``self`` in the format
+            [matrix dict, initial vector, final vector]
+        as with ``self.list()``, except that every matrix and vector is
+        given by a list of coefficients, each of which is replaced by its string
+        representation.
+
+        The point of this is to be able to represent ``self`` in a very compact
+        and portable way, for example to store on disk.
+        A list as output by ``dump_as_strings()`` can be reconstituted into a
+        WeightedAutomaton instance using ``WeightedAutomaton.from_dump()``.
+
+        EXAMPLES::
+        
+            sage: A = WeightedAutomaton.constant(1/3,['a','b'])
+            sage: A.dump_as_strings()
+            [{'a': ['1/3', '2/3', '1/3', '2/3'], 'b': ['1/3', '2/3', '1/3', '2/3']},
+            ['1/3', '2/3'],
+            ['1', '0']]
+        """
         matrixstrings = {}
         for l in self.alphabet:
+            # we need to use dense_coefficient_list() to get every entry
             matrixstrings[l] = [str(c) for c in self.transitions[l].dense_coefficient_list()]
-        return [matrixstrings, \
-                    [str(c) for c in self.initial.dense_coefficient_list()], \
-                    [str(c) for c in self.final.dense_coefficient_list()]]
+        return [matrixstrings, 
+                [str(c) for c in self.initial.dense_coefficient_list()],
+                [str(c) for c in self.final.dense_coefficient_list()]]
 
 
 ################################################################################
@@ -190,10 +210,10 @@ class WeightedAutomaton(SageObject):
         preparetrans = {}
         mysize = len(dumpedstring[1])
         for k in dumpedstring[0].keys():
-            preparetrans[k] = matrix(mysize,mysize, \
+            preparetrans[k] = matrix(mysize,mysize,
                     [thering(i) for i in dumpedstring[0][k]])
-        return WeightedAutomaton(preparetrans, \
-            [thering(c) for c in dumpedstring[1]], \
+        return WeightedAutomaton(preparetrans,
+            [thering(c) for c in dumpedstring[1]],
             [thering(c) for c in dumpedstring[2]], ring=thering)
 
     @classmethod
@@ -954,9 +974,9 @@ class WeightedAutomaton(SageObject):
             raise TypeError('you can only take the direct sum of two WeightedAutomata over the same alphabet and coefficient ring')
         newinit = self.initial.augment(other.initial)
         newfinal = self.final.stack(other.final)
-        newtrans = {}
-        for a in self.alphabet:
-            newtrans[a] = self.transitions[a].block_sum(other.transitions[a])
+        newtrans = dict(zip(self.alphabet,
+                            [self.transitions[a].block_sum(other.transitions[a])
+                             for a in self.alphabet]))
         return WeightedAutomaton(newtrans,newinit,newfinal,ring=self.ring)
 
     def elementwise_sum(self,other,selfweight=1,otherweight=1):
