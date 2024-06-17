@@ -117,7 +117,8 @@ class WeightedAutomaton(SageObject):
         x.
         """
         return WeightedAutomaton(self.transitions,-self.initial,
-                                 self.final,ring=self.ring)
+                                 self.final,ring=self.ring,
+                                 variables=self.vars)
 
     def __add__(self,other):
         """
@@ -817,7 +818,7 @@ class WeightedAutomaton(SageObject):
             # we'll let the constructor handle if ``newtransitions`` isn't what
             # it's supposed to be
             newdict[letter] = newtransitions
-        return WeightedAutomaton(newdict,self.initial,self.final, \
+        return WeightedAutomaton(newdict,self.initial,self.final,
                                  ring=self.ring,variables=self.vars)
 
     def delete_letter(self,letter):
