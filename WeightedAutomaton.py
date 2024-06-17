@@ -4,7 +4,13 @@ import heapq
 import pickle
 
 class WeightedAutomaton(SageObject):
-    def __init__(self,matrix_dict,init_states,final_states,alph=None,ring=QQ):
+    def __init__(self, 
+                 matrix_dict, 
+                 init_states,
+                 final_states,
+#                 alph=None,
+                 ring=QQ,
+                 variables=None):
         """
         Return a WeightedAutomaton instance using transition matrices
         ``matrix_dict`` (as a dictionary in the form {letter: matrix}),
@@ -25,12 +31,14 @@ class WeightedAutomaton(SageObject):
         By default everything will be coerced to be over QQ (possibly subject to
         future change for greater flexibility).
 
-        In the future, several alternative constructors will be provided to make
-        this less clumsy to use.
+        If ``variables`` is set then it should be a list or tuple of symbolic
+        variables which presumably appear in the vectors or matrices. No check
+        is done, so it is up to the caller to enforce this. If unset then
+        ``self.vars`` will by default be set to ().
 
-        The constructor sets the properties self.transitions,
-        self.initial, self.final, self.alphabet, self.ring,
-        self.states, and self.size (the latter being the number of states).
+        The constructor sets the properties self.transitions, self.initial,
+        self.final, self.alphabet, self.ring, self.states, self.vars, and
+        self.size (the latter being the number of states).
 
         EXAMPLES::
 
@@ -71,17 +79,14 @@ class WeightedAutomaton(SageObject):
         self.ring = ring
         self.size = n
         self.states = list(range(0,n)) # TODO allow general state labels
-        # the following is unused by default. It is only used by the symbolic()
-        # constructor to allow the user to access the symbolic variables used in
-        # a WA over SR.
-        self.vars = None
+        if variables == None:
+            self.vars = ()
+        else:
+            self.vars = tuple(variables)
 
     def __repr__(self):
         return "Weighted finite automaton over the alphabet %s and coefficients in %s with %s states"%(self.alphabet,str(self.ring),self.size)
 
-#    def __str__(self):
-#        return str(self.list())
-    
     def __call__(self,string):
         """
         Return the acceptance probability of ``string``.
@@ -135,9 +140,12 @@ class WeightedAutomaton(SageObject):
         if isinstance(other,WeightedAutomaton):
             return self.tensor_product(other)
         else:
+            # allow for scaling by stuff from different rings
+            newring = self._biggerring(self.ring,base_ring(other))
             return WeightedAutomaton(self.transitions,
-                                     self.ring(other)*self.initial,
-                                     self.final, ring=self.ring)
+                                     newring(other)*self.initial.change_ring(newring),
+                                     self.final, ring=newring,
+                                     variables=self.vars)
     
     # this is to allow scalar multiplication in either order
     def __rmul__(self,other):
@@ -200,6 +208,7 @@ class WeightedAutomaton(SageObject):
 ######################  CONSTRUCTORS  ##########################################
 ################################################################################
 
+    # TODO: allow reconstructing symbolic variables
     @classmethod
     def from_list(self,thelist,ring=QQ):
         """
@@ -420,9 +429,7 @@ class WeightedAutomaton(SageObject):
             else:
                 # if the caller passes in garbage, the constructor will catch it
                 vf = finalvector
-        symbaut = WeightedAutomaton(mats,vi,vf,ring=SR)
-        symbaut.vars = var
-        return symbaut
+        return WeightedAutomaton(mats,vi,vf,ring=SR,variables=var)
 
 
 ################################################################################
@@ -490,6 +497,16 @@ class WeightedAutomaton(SageObject):
             for w in rawSW[k]:
                 newSW[k].append(WeightedAutomaton.from_dump(w,ring=QQ))
         return newSW
+
+    # TODO: docstring
+    @classmethod
+    def _biggerring(self,ring1,ring2):
+        if ring1.is_subring(ring2):
+            return ring2
+        elif ring2.is_subring(ring1):
+            return ring1
+        else:
+            return SR
 
 
 ################################################################################
@@ -781,7 +798,7 @@ class WeightedAutomaton(SageObject):
         ``newring``.
         """
         return WeightedAutomaton(self.transitions,self.initial,
-                                 self.final,ring=newring)
+                                 self.final,ring=newring,variables=self.vars)
 
     def add_letter(self,letter,newtransitions=None):
         """
@@ -801,7 +818,7 @@ class WeightedAutomaton(SageObject):
             # it's supposed to be
             newdict[letter] = newtransitions
         return WeightedAutomaton(newdict,self.initial,self.final, \
-                                 ring=self.ring)
+                                 ring=self.ring,variables=self.vars)
 
     def delete_letter(self,letter):
         """
@@ -812,7 +829,8 @@ class WeightedAutomaton(SageObject):
             raise IndexError(f'{letter} is not in the alphabet')
         newdict = deepcopy(self.transitions)
         newdict.pop(letter)
-        return WeightedAutomaton(newdict,self.initial,self.final,ring=self.ring)
+        return WeightedAutomaton(newdict,self.initial,self.final,
+                                 ring=self.ring,variables=self.vars)
 
     def swap_states(self,state1,state2):
         """
@@ -833,7 +851,7 @@ class WeightedAutomaton(SageObject):
         return WeightedAutomaton(newdict,
                                  self.initial.with_swapped_columns(index1,index2),
                                  self.final.with_swapped_rows(index1,index2),
-                                 ring=self.ring)
+                                 ring=self.ring,variables=self.vars)
 
     # TODO: flesh out as indicated
     def add_states(self,nstates=1):
@@ -856,7 +874,8 @@ class WeightedAutomaton(SageObject):
         for a in self.alphabet:
             newdict[a] = self.transitions[a].block_sum(
                             identity_matrix(nstates,nstates))
-        return WeightedAutomaton(newdict,newinitial,newfinal,ring=self.ring)
+        return WeightedAutomaton(newdict,newinitial,newfinal,
+                                 ring=self.ring,variables=self.vars)
 
     def delete_states(self,statelist):
         """
@@ -872,7 +891,8 @@ class WeightedAutomaton(SageObject):
         for a in self.alphabet:
             newtrans[a] = (self.transitions[a].delete_rows(indexlist)
                 .delete_columns(indexlist))
-        return WeightedAutomaton(newtrans,newinit,newfinal,ring=self.ring)
+        return WeightedAutomaton(newtrans,newinit,newfinal,ring=self.ring,
+                                 variables=self.vars)
 
     # TODO: decide if it's too fussy to allow to reweight in every one of these
     # methods. Maybe normalize[d]() should be the only place to do it.
@@ -940,14 +960,13 @@ class WeightedAutomaton(SageObject):
         theindex = self.states.index(state)
         self.final[theindex,0] = self.ring(value)
 
-
     def with_initial_vector(self,newinitial):
         """
         Return a copy of ``self`` with initial state vector replaced with
         ``newinitial``.
         """
         return WeightedAutomaton(self.transitions,newinitial,self.final,
-                                 ring=self.ring)
+                                 ring=self.ring,variables=self.vars)
 
     def with_final_vector(self,newfinal):
         """
@@ -955,7 +974,7 @@ class WeightedAutomaton(SageObject):
         ``newfinal``.
         """
         return WeightedAutomaton(self.transitions,self.initial,newfinal,
-                                 ring=self.ring)
+                                 ring=self.ring,variables=self.vars)
 
     # TODO: allow more flexibility. Maybe have a separate normalize_all()
     # and then separate methods where you need to specify exactly which things
@@ -988,7 +1007,8 @@ class WeightedAutomaton(SageObject):
                 thesum = sum(self.transitions[l][r].coefficients())
                 if thesum != 0:
                     newdict[l][r] /= thesum
-        return WeightedAutomaton(newdict,newinitial,self.final,ring=self.ring)
+        return WeightedAutomaton(newdict,newinitial,self.final,ring=self.ring,
+                                 variables=self.vars)
 
     def subs(self, *args, **kwds):
         """
@@ -996,7 +1016,7 @@ class WeightedAutomaton(SageObject):
         vectors and transition matrices of ``self``, and return the resulting
         WeightedAutomaton.
        
-        The output will have the same ring as ``self``.
+        The output will have the same ring and variables as ``self``.
 
         As with Sage's variable substition for matrices, the arguments are
         passed unchanged to the method ``subs`` of each matrix and vector.
@@ -1004,7 +1024,8 @@ class WeightedAutomaton(SageObject):
         newdict = dict(zip(self.alphabet, [m.subs(*args,**kwds) for m in
                                            self.transitions.values()]))
         return WeightedAutomaton(newdict, self.initial.subs(*args,**kwds),
-                                 self.final.subs(*args,**kwds), ring=self.ring)
+                                 self.final.subs(*args,**kwds), ring=self.ring,
+                                 variables=self.vars)
 
 ################################################################################
 ########################## ALGEBRAIC OPERATIONS ################################
@@ -1026,7 +1047,8 @@ class WeightedAutomaton(SageObject):
         for a in self.alphabet:
             newdict[a] = self.transitions[a].transpose()
         return WeightedAutomaton(newdict, self.final.transpose(),
-                                 self.initial.transpose(), ring=self.ring)
+                                 self.initial.transpose(), ring=self.ring,
+                                 variables=self.vars)
 
     def complement(self):
         """
@@ -1040,7 +1062,7 @@ class WeightedAutomaton(SageObject):
         """
         return WeightedAutomaton(self.transitions, self.initial,
                                  matrix.ones(self.ring,self.size,1) - self.final, 
-                                 ring=self.ring)
+                                 ring=self.ring,variables=self.vars)
 
     def scaled(self,scalefactor):
         """
@@ -1070,17 +1092,27 @@ class WeightedAutomaton(SageObject):
         If M = self.direct_sum(other), then M satisfies
             M.prob(x) = self.prob(x) + other.prob(x)
         for all strings x. Also M.size = self.size + other.size.
+
+        The sets of variables of ``self`` and ``other`` will be combined in the
+        output. If ``self`` and ``other`` have different rings, the output's
+        ring will be either the larger of the two (if applicable), or SR.
         """
         if not isinstance(other,WeightedAutomaton):
             raise TypeError('you can only take the direct sum of two WeightedAutomata')
-        if not (self.alphabet == other.alphabet and self.ring == other.ring):
-            raise TypeError('you can only take the direct sum of two WeightedAutomata over the same alphabet and coefficient ring')
-        newinit = self.initial.augment(other.initial)
-        newfinal = self.final.stack(other.final)
+        if not self.alphabet == other.alphabet:
+            raise TypeError('you can only take the direct sum of two WeightedAutomata over the same alphabet')
+        # try to find the bigger of the two rings; if that fails, try shoving
+        # everything into SR
+        newring = self._biggerring(self.ring,other.ring)
+        newinit = (self.initial.change_ring(newring)
+                   .augment(other.initial.change_ring(newring)))
+        newfinal = (self.final.change_ring(newring)
+                    .stack(other.final.change_ring(newring)))
         newtrans = dict(zip(self.alphabet,
                             [self.transitions[a].block_sum(other.transitions[a])
                              for a in self.alphabet]))
-        return WeightedAutomaton(newtrans,newinit,newfinal,ring=self.ring)
+        return WeightedAutomaton(newtrans,newinit,newfinal,ring=newring,
+                                 variables=self.vars+other.vars)
 
     def elementwise_sum(self,other,selfweight=1,otherweight=1):
         """
@@ -1108,26 +1140,36 @@ class WeightedAutomaton(SageObject):
         1, then ``self.elementwise_sum(other,selfweight,otherweight)`` is also a
         PFA. In effect the result is a convex combination of ``self`` and
         ``other`` viewed as vectors in euclidean space.
+        
+        The sets of variables of ``self`` and ``other`` will be combined in the
+        output. If ``self`` and ``other`` have different rings, the output's
+        ring will be either the larger of the two (if applicable), or SR.
         """
         if not isinstance(other,WeightedAutomaton):
             raise TypeError('you can only take the elementwise sum of two WeightedAutomata')
-        if not (self.size == other.size and self.ring == other.ring):
-            raise TypeError('elementwise sum only defined for WeightedAutomata of the same size and over the same coefficient ring')
-        selfweight = self.ring(selfweight)
-        otherweight = self.ring(otherweight)
+        if not self.size == other.size:
+            raise TypeError('elementwise sum only defined for WeightedAutomata of the same size')
+        newring = self._biggerring(self.ring,other.ring)
+        selfweight = newring(selfweight)
+        otherweight = newring(otherweight)
         newdict = {}
-        newinit = selfweight*self.initial + otherweight*other.initial
-        newfinal = selfweight*self.final + otherweight*other.final
+        newinit = (selfweight*self.initial.change_ring(newring)
+                   + otherweight*other.initial.change_ring(newring))
+        newfinal = (selfweight*self.final.change_ring(newring)
+                    + otherweight*other.final.change_ring(newring))
         for a in self.alphabet:
-            newdict[a] = selfweight*self.transitions[a]
+            newdict[a] = selfweight*self.transitions[a].change_ring(newring)
         for a in other.alphabet:
             # if a letter appears in both alphabets, add their matrices
             if a in self.alphabet:
-                newdict[a] += otherweight*other.transitions[a]
+                newdict[a] += (otherweight
+                               *other.transitions[a].change_ring(newring))
             # if not, then just append other's transition matrix
             else:
-                newdict[a] = otherweight*other.transitions[a]
-        return WeightedAutomaton(newdict,newinit,newfinal,ring=self.ring)
+                newdict[a] = (otherweight
+                              *other.transitions[a].change_ring(newring))
+        return WeightedAutomaton(newdict,newinit,newfinal,ring=newring,
+                                 variables=self.vars+other.vars)
 
     def direct_product(self,other):
         """
@@ -1139,16 +1181,22 @@ class WeightedAutomaton(SageObject):
         Only defined between two WeightedAutomata over the same alphabet and
         with the same number of states. If ``self`` and ``other`` are both PFAs,
         their direct product is again a PFA of the same size.
+
+        The sets of variables of ``self`` and ``other`` will be combined in the
+        output. If ``self`` and ``other`` have different rings, the output's
+        ring will be either the larger of the two (if applicable), or SR.
         """
         if not isinstance(other,WeightedAutomaton):
             raise TypeError('you can only take the direct product of two WeightedAutomata')
         if not (self.size == other.size and self.alphabet == other.alphabet):
             raise TypeError('direct product only defined for WeightedAutomata of the same size over the same alphabet')
+        newring = self._biggerring(self.ring,other.ring)
         newdict = {}
         for a in self.alphabet:
             newdict[a] = (self.transitions[a]*other.transitions[a])
         return WeightedAutomaton(newdict, self.initial,
-                                 other.final, ring=self.ring)
+                                 other.final, ring=newring,
+                                 variables=self.vars+other.vars)
     
     def tensor_product(self,other):
         """
@@ -1161,17 +1209,24 @@ class WeightedAutomaton(SageObject):
         If M = self.tensor_product(other), then M satisfies
             M.prob(x) = self.prob(x) * other.prob(x)
         for all strings x. Also M.size = self.size * other.size.
+
+        The sets of variables of ``self`` and ``other`` will be combined in the
+        output. If ``self`` and ``other`` have different rings, the output's
+        ring will be either the larger of the two (if applicable), or SR.
         """
         if not isinstance(other,WeightedAutomaton):
             raise TypeError('you can only take the tensor product of two WeightedAutomata')
-        if not (self.alphabet == other.alphabet and self.ring == other.ring):
-            raise TypeError('you can only take the tensor product of two WeightedAutomata over the same alphabet and coefficient ring')
+        if not self.alphabet == other.alphabet:
+            raise TypeError('you can only take the tensor product of two WeightedAutomata over the same alphabet')
+        newring = self._biggerring(self.ring,other.ring)
         newinit = self.initial.tensor_product(other.initial, subdivide=False)
         newfinal = self.final.tensor_product(other.final, subdivide=False)
         newdict = {}
         for a in self.alphabet:
-            newdict[a] = self.transitions[a].tensor_product(other.transitions[a], subdivide=False)
-        return WeightedAutomaton(newdict,newinit,newfinal,ring=self.ring)
+            newdict[a] = self.transitions[a].tensor_product(other.transitions[a], 
+                                                            subdivide=False)
+        return WeightedAutomaton(newdict,newinit,newfinal,ring=newring,
+                                 variables=self.vars+other.vars)
 
 
 
