@@ -6,9 +6,8 @@ WeightedAutomaton.py. It excludes various inline TODOs still in that file.
 - Add examples (and note in docstrings) how to get around the issue of ambiguity
   of strings like '0123' if '12' is a single letter in the alphabet. (Everything
   works if you pass in lists/tuples---just need to be careful to do that.)
-- Idea: have a separate PFA class that inherits from WeightedAutomaton? This
-  would overload arithmetic operators differently (with more complex operations
-  designed to preserve being a PFA). [probably a needless complication.]
+
+- ** swap letters; remap letters (i.e., "rename" a letter)
 
 - State labels: need to update main constructor to let you pass in if you want, and
   also internal use of constructors should preserve labels.
@@ -19,7 +18,7 @@ TO IMPLEMENT (from old code):
   bruteforce() family of functions
     - Would it be worth it to still keep around versions which only give you
       matrix dicts?
-  LOW PRIORITY - autgraph() etc (to create a digraph)
+  autgraph() etc (to create a digraph)
   pathlist()
   pfa2ifs() and friends
 
@@ -27,11 +26,15 @@ TO IMPLEMENT (from old code):
   subdivision. Allow options to set single initial and final vectors, with the
   default being to also bruteforce all subdivisions of those.
 
-- Algebraic operations on WAs: "tensor sum" (Paz) - fix
+- Algebraic operations on WAs: "tensor sum" (Paz) - fix.
+  (And is that recoverable through the other ops?)
 
 - Constructor from transitions (given as rules, not matrices)
+- Casting from Sage FSM and Transducer classes - and converting to them
 - Also, a version where you can have it fill in the last entry of each row for
   you instead of you having to do it manually.
+- And - one where you can leave some letters unspecified (indicate they're
+  supposed to be there with "alph")?
 
 - Return an equivalent PFA from a given WA, via Turakainen?
 - Implement Tseng's algorithm to test for equality of acc.prob. functions of two
