@@ -614,13 +614,13 @@ class WeightedAutomaton(SageObject):
             return min_symbolic(funcs)
         # otherwise we have a chance to be a bit more efficient
         else:
-            thegap = 1 # initialize at max possible value because it's defined as a minimum
+            thegap = self.ring(1) # initialize at max possible value because it's defined as a minimum
             for s in usestrings:
                 if s == string: continue # don't compare against yourself
                 testgap = myprob - self.prob(s)
                 # if myprob isn't maximal (and we're cutting off at gap 0), immediately end
                 if testgap <= 0 and cutoff == True:
-                    return 0
+                    return self.ring(0)
                 if testgap < thegap:
                     thegap = testgap
             return thegap
@@ -926,7 +926,7 @@ class WeightedAutomaton(SageObject):
             else:
                 # this means the only way to make the row sum to 1 is actually to change
                 # the [index1,index2] entry to 1 (overriding the caller's value)
-                self.transitions[letter][index1,index2] = self.ring(1)
+                self.transitions[letter][index1,index2] = 1
 
     def set_initial(self,state,value,reweight=False):
         """
@@ -950,7 +950,7 @@ class WeightedAutomaton(SageObject):
                     if n != theindex: # only change the entries we didn't set above
                         self.initial[0,n] *= (1-castvalue)/restofrowsum
             else:
-                self.initial[0,theindex] = self.ring(1)
+                self.initial[0,theindex] = 1
 
     def set_final(self,state,value):
         """
@@ -1021,6 +1021,19 @@ class WeightedAutomaton(SageObject):
 
         As with Sage's variable substition for matrices, the arguments are
         passed unchanged to the method ``subs`` of each matrix and vector.
+
+        EXAMPLES::
+
+            sage: a,b=var('a,b')
+            sage: A=WeightedAutomaton({'0': [[1,1-a]]*2, '1': [[1,1-b]]*2}, 
+                                      [a,0], [0,b], ring=SR)
+            sage: B=A.subs(b=2)
+            sage: B.list()
+            [
+            {'0': [     1 -a + 1]                    
+            [     1 -a + 1], '1': [ 1 -1]         [0]
+            [ 1 -1]}                     , [a 0], [2]
+            ]
         """
         newdict = dict(zip(self.alphabet, [m.subs(*args,**kwds) for m in
                                            self.transitions.values()]))
