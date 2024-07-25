@@ -1,13 +1,24 @@
 This is a sloppily formatted todo list plucked from the working version of
 WeightedAutomaton.py. It excludes various inline TODOs still in that file.
 
-- Add import statements locally to make sure all the native Sage methods i use
-  are within scope
-- Add examples (and note in docstrings) how to get around the issue of ambiguity
+- Add import statements to make sure all the native Sage methods i use are
+  within scope
+- *** Add examples (and note in docstrings) how to get around the issue of ambiguity
   of strings like '0123' if '12' is a single letter in the alphabet. (Everything
   works if you pass in lists/tuples---just need to be careful to do that.)
 
-- ** swap letters; remap letters (i.e., "rename" a letter)
+- * swap letters; remap letters (i.e., "rename" a letter)
+- is_dfa(), is_nfa()
+- test if the WA is strongly connected (there is a path with nonzero weight
+  between every pair of states)
+- replace all occurrences of something (across all matrix and vector entries)
+  with something else, e.g., replace 1 with .99 everywhere.
+  OR, better, method that applies a function to every matrix/vector entry.
+  Ideally, would allow the option of letting the function know which letter, ij,
+  etc the value is in (but only optionally - so inline lambda x: something is
+  also acceptable, or if you like, at bare minimum lambda x,l,i,j: something,
+  where m = index of letter of alphabet and i,j=matrix row,column. m=-2 and -1
+  for initial and final vectors)
 
 - State labels: need to update main constructor to let you pass in if you want, and
   also internal use of constructors should preserve labels.
@@ -15,7 +26,7 @@ WeightedAutomaton.py. It excludes various inline TODOs still in that file.
   labeled states needing to be present among the keys.
 
 TO IMPLEMENT (from old code):
-  bruteforce() family of functions
+  ** bruteforce() family of functions
     - Would it be worth it to still keep around versions which only give you
       matrix dicts?
   autgraph() etc (to create a digraph)
@@ -26,15 +37,20 @@ TO IMPLEMENT (from old code):
   subdivision. Allow options to set single initial and final vectors, with the
   default being to also bruteforce all subdivisions of those.
 
-- Algebraic operations on WAs: "tensor sum" (Paz) - fix.
+- * Algebraic operations on WAs: "tensor sum" (Paz) - fix.
   (And is that recoverable through the other ops?)
 
 - Constructor from transitions (given as rules, not matrices)
-- Casting from Sage FSM and Transducer classes - and converting to them
+- * Casting from Sage FSM and Transducer classes - and converting to them
 - Also, a version where you can have it fill in the last entry of each row for
   you instead of you having to do it manually.
 - And - one where you can leave some letters unspecified (indicate they're
   supposed to be there with "alph")?
+- *** main constructor should be much more flexible with ring and variables: try
+  to figure out on the fly (if they're unspecified). Take the biggest ring
+  everything can naturally live in (using _biggerring()) and, if we're not over
+  NN/ZZ/QQ/AA/RR, use the scratch variables() code (i guess) to generate the
+  list if caller leaves blank
 
 - Return an equivalent PFA from a given WA, via Turakainen?
 - Implement Tseng's algorithm to test for equality of acc.prob. functions of two
