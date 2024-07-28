@@ -1,0 +1,16 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: WeightedAutomata
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Kenneth
+    family-names: Gill
+    email: gillmathpsu@posteo.net
+    orcid: 'https://orcid.org/0009-0002-3452-3937'
+repository-code: 'https://github.com/nowheredense/weightedautomata'
+license: MIT
