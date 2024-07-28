@@ -3,6 +3,10 @@ import numpy
 import heapq
 import pickle
 
+
+#################################################################################
+
+
 class WeightedAutomaton(SageObject):
     def __init__(self, 
                  matrix_dict, 
@@ -174,6 +178,19 @@ class WeightedAutomaton(SageObject):
             show(table(self.transitions[letter]))
         print("Initial state distribution:", list(self.initial[0]))
         print("Final state distribution:", list(self.final.transpose()[0]))
+
+    def entries(self):
+        """
+        Return a flat list of all transition probabilities.
+        First appear the entries of all transition matrices in alphabet order,
+        then the entries of the initial and final state vectors.
+        """
+        output = []
+        for m in self.transitions.values():
+            output += m.dense_coefficient_list()
+        output += (self.initial.dense_coefficient_list()
+                   + self.final.dense_coefficient_list())
+        return output
 
     def dump_as_strings(self):
         """
@@ -522,7 +539,8 @@ class WeightedAutomaton(SageObject):
         A = identity_matrix(self.size) # this allows to cover the case where ``string`` is empty
         for ch in string:
             if not str(ch) in self.alphabet:
-                raise ValueError(f'{ch} is not a valid letter of the alphabet {self.alphabet}')
+                raise ValueError(f'{ch} is not a valid letter '
+                                 f'of the alphabet {self.alphabet}')
             A *= self.transitions[ch]
         return A
 
@@ -583,7 +601,7 @@ class WeightedAutomaton(SageObject):
         wordlist = self.strings([thelength])
         return self.probs(wordlist)
 
-    def gap(self,string,comparestrings=None,cutoff=False):
+    def gap(self,string,comparestrings=None,cutoff=None):
         """
         Return the gap of ``string`` with respect to ``self``. This is the
         least difference between self.prob(``string``) and self.prob(x) where
@@ -595,15 +613,28 @@ class WeightedAutomaton(SageObject):
         If specified, ``comparestrings`` is a list of strings against which to
         compare ``string``. If ``comparestrings`` is not specified, ``gap()``
         will generate self.strings([len(``string``)]) on every run.
-        Generating this set in advance and passing it to ``gap()`` is useful to
-        save time in loops.
-        If ``cutoff`` is set to True, just return 0 if the gap isn't positive.
+        (Generating this set in advance and passing it to ``gap()`` is useful to
+        save time in loops.)
+
+        If ``cutoff`` is set to a number, just return 0 if the gap <= ``cutoff''.
         (Has no effect if self.ring == SR.)
+        This can save time in general since the function returns 0 as soon as it
+        finds out that the gap will be smaller than this threshold.
         """
+        # let's make the behavior for the empty string unambiguous
+        if len(string) == 0:
+            return 0
         if comparestrings == None: # compare with other strings of same length
             usestrings = self.strings([len(string)])
         else: # compare with strings given by caller
             usestrings = comparestrings
+        if len(usestrings) == 0:
+            raise ValueError('you must compare against a nonempty list'
+                             'of strings')
+        # if usestrings consists of copies of string, we already know the answer
+        startstr = next(s for s in usestrings if s != string)
+        if startstr == None:
+            return 0
         myprob = self.prob(string)
         # if over SR, in general we have to use a completely symbolic approach
         if self.ring == SR:
@@ -614,12 +645,14 @@ class WeightedAutomaton(SageObject):
             return min_symbolic(funcs)
         # otherwise we have a chance to be a bit more efficient
         else:
-            thegap = self.ring(1) # initialize at max possible value because it's defined as a minimum
+            # initialize at a value we know occurs
+            thegap = myprob - self.prob(startstr)
             for s in usestrings:
                 if s == string: continue # don't compare against yourself
                 testgap = myprob - self.prob(s)
-                # if myprob isn't maximal (and we're cutting off at gap 0), immediately end
-                if testgap <= 0 and cutoff == True:
+                # if we're cutting off below a certain gap and already see that
+                # our string has a lower gap, immediately end
+                if cutoff != None and testgap <= cutoff:
                     return self.ring(0)
                 if testgap < thegap:
                     thegap = testgap
@@ -669,7 +702,7 @@ class WeightedAutomaton(SageObject):
                                for it in itertools.product(self.alphabet,repeat=i)]
             else:
                 morestrings = list(itertools.product(self.alphabet,repeat=i))
-            thelist = thelist + morestrings
+            thelist += morestrings
         return thelist
 
     def is_highest(self,teststring,comparestrings=None):
@@ -706,6 +739,13 @@ class WeightedAutomaton(SageObject):
         """
         return (self.final[state][0] != 0)
 
+    def accepting_states(self):
+        """
+        Return list of ``self``'s states (given as indices) which are accepting,
+        i.e., have nonzero weight in the final state distribution.
+        """
+        return [s for s in self.states if self.is_accepting(s)]
+
     def is_dead_state(self,thestate):
         """
         Return True iff ``thestate`` is a nonaccepting state with no
@@ -714,7 +754,7 @@ class WeightedAutomaton(SageObject):
         ``thestates`` to other states have weight 0).
         """
         if not thestate in self.states:
-            raise ValueError('invalid state')
+            raise ValueError(f'invalid state: {thestate}')
         if self.is_accepting(thestate): return False
         return all([(self.trans_prob(thestate,i,sigma) == 0) for sigma in self.alphabet \
                 for i in self.states if i != thestate])
@@ -745,7 +785,7 @@ class WeightedAutomaton(SageObject):
                     return False
         # finally, final states
         for entry in self.final.dense_coefficient_list():
-            if entry != 0 and entry != 1:
+            if not entry in [0,1]:
                 return False
         return True
 
