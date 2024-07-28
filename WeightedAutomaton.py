@@ -737,32 +737,64 @@ class WeightedAutomaton(SageObject):
         Return True iff ``state`` (which can only be a number for now) is accepting,
         i.e., the final state distribution assigns a nonzero weight to it.
         """
-        return (self.final[state][0] != 0)
+        return (self.final_weight(state) != 0)
 
     def accepting_states(self):
         """
         Return list of ``self``'s states (given as indices) which are accepting,
-        i.e., have nonzero weight in the final state distribution.
+        i.e., have nonzero weight in its final state distribution.
         """
         return [s for s in self.states if self.is_accepting(s)]
 
+    def is_starting(self,state):
+        """
+        Return True iff ``state`` is a starting state, i.e., the initial state
+        distribution assigns a nonzero weight to it.
+        """
+        return (self.initial_weight(state) != 0)
+
+    def starting_states(self):
+        """
+        Return list of ``self``'s states (given as indices) which have nonzero
+        weight in its initial state distribution.
+        """
+        return [s for s in self.states if self.is_starting(s)]
+
     def is_dead_state(self,thestate):
         """
-        Return True iff ``thestate`` is a nonaccepting state with no
-        out-transitions to other states (in other words, the weight of
-        ``thestate`` in ``self.final`` is 0, and all transitions from
-        ``thestates`` to other states have weight 0).
+        Return True iff ``thestate`` is not part of any accepting path.
+        More precisely, return True iff either 
+            - there is no path with nonzero weight from a starting state to
+              ``thestate``; or
+            - there is no path with nonzero weight from ``thestate`` to an
+              accepting state.
         """
+        # this function builds a digraph whose adjacency matrix's (ij)-entry is
+        # 1 iff there is some transition matrix whose (ij)-entry != 0
+        def forgetful_digraph(automaton):
+            n = automaton.size
+            adjmatrix = zero_matrix(n)
+            for letter,row,col in itertools.product(automaton.alphabet,
+                                                    range(n),range(n)):
+                if automaton.transitions[letter][row,col] != 0:
+                    adjmatrix[row,col] = 1
+            return DiGraph(adjmatrix,loops=True)
         if not thestate in self.states:
             raise ValueError(f'invalid state: {thestate}')
-        if self.is_accepting(thestate): return False
-        return all([(self.trans_prob(thestate,i,sigma) == 0) for sigma in self.alphabet \
-                for i in self.states if i != thestate])
+        G = forgetful_digraph(self)
+        # meaning of the following line: return True iff either every path from
+        # a starting state to thestate has zero weight, or every path from
+        # thestate to an accepting state does
+        return (all([(len(G.all_paths(i,thestate))==0) for i in self.states if
+                     self.initial_weight(i) != 0])
+                or all([(len(G.all_paths(thestate,j))==0) for j in self.states
+                         if self.final_weight(j) != 0]))
 
     def has_dead_state(self):
         """
-        Return True iff ``self`` has a dead state, a nonaccepting state with no
-        nonzero out-transitions.
+        Return True iff ``self`` has a dead state, that is, a state which does
+        not occur in any path from a starting to an accepting state with nonzero
+        weight.
         """
         return any([self.is_dead_state(s) for s in self.states])
 
