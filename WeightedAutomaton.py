@@ -6,6 +6,113 @@ import pickle
 
 #################################################################################
 
+# Given list ``vecs`` of vectors and alphabet ``alph``, return all possible
+# WAs which read from ``alph`` that can be formed using the elements of
+# ``vecs`` as the rows of the transition matrices and the initial and final
+# state vectors.
+# vecs = list of vectors (which should be lists or tuples of numbers, or row vectors)
+# If either fixinitial or fixfinal != None, they should be vectors given as lists or
+# Sage matrices, and setting either will cause all outputs to use the
+# respective vector as the initial (respectively final) state vector.
+# If they're unset, [1,0,...,0] is used by default for both. In the future, all
+# possible combos of initial vectors drawing from ``vecs`` will be generated, as
+# well as all possible final vectors.
+# If permute == True, include all possible combinations of letter: matrix.
+# Otherwise, only include one.
+def pfas_from_vectors(vecs,alph=['0','1'],fixinitial=None,fixfinal=None,permute=True,info=False):
+    nstates = len(vecs[0])
+    if any([nstates != len(v) for v in vecs]):
+        raise ValueError('all given vectors must have the same length')
+    matrices = Tuples([tuple(v) for v in vecs],nstates)
+    # we need to make it immutable
+    tmats = [tuple(m) for m in matrices]
+    if info: print(f'{len(tmats)} matrices')
+    # tmats is the pool of possible matrices to pull from. Now build all
+    # possible matrix dictionaries with alph as keys.
+    numletters = len(alph)
+    if permute:
+        mats2 = list(Tuples(tmats,numletters))
+    else:
+        mats2 = list(itertools.combinations(tmats,numletters))
+    if info: print(f'{len(mats2)} matrix tuples')
+    ### TEMPORARY
+    if fixinitial == None: fixinitial = [1]+[0]*(nstates-1)
+    if fixfinal == None: fixfinal = [0]*(nstates-1)+[1]
+    ###
+    Pnew = [] #will be list of resulting WAs
+    for P in mats2:
+        newdict = dict(zip(alph,P))
+        #for i in range(len(alph)):
+        #    newdict.update({str(alph[i]):P[i]})
+        ### TEMPORARY
+        Pnew.append(WeightedAutomaton(newdict, fixinitial, fixfinal, ring=QQ))
+        ###
+    return Pnew
+    # extension with fixinitial/final: still only build the list of matrix
+    # dicts above. Afterwards, form the lists (separately) of initial and
+    # final state vectors to use. If the argument == None, make each of them
+    # equal to vecs. Otherwise, check type of the argument and make each of
+    # them equal to [the argument]. Build a list of (finally) WAs with a
+    # nested loop going through all possible combos of matrix dict & vectors
+    # from both respective lists.
+
+#return list of dictionaries of nstates x nstates matrices, over
+#the alphabet alph (which should be a list or tuple).
+#(1/denom) will be the increment of transition probabilities
+#if permute=False, don't include (a) all ways to order a
+#tuple of matrices; (b) tuples where any two matrices are the same.
+#if info=True, print sizes of stuff along the way
+def pfas_with_denominator(nstates,denom,alph=['0','1'],
+                          fixinitial=None,fixfinal=None, 
+                          permute=True,info=False):
+    linit = Compositions(nstates+denom,length=nstates)
+    if info: print(f'{len(linit)} partitions')
+    rows = []
+    for t in linit:
+        r = [QQ(i-1)/denom for i in t]
+        rows.append(tuple(r))
+    if info: print(f'{len(rows)} rows')
+    return pfas_from_vectors(tuple(rows),alph,fixinitial,fixfinal,permute,info)
+
+def gpfas_with_denominator(nstates,denom,alph=['0','1'],
+                          fixinitial=None,fixfinal=None, 
+                          permute=True,info=False):
+    # if n=denom, this is the set of (j-n)/n for j between 0 and 2n, which is
+    # exactly the set of i/n for i between -n and n (take j=i+n)
+    values = [QQ((j-denom)/denom) for j in range(2*denom+1)]
+    print(values)
+    #linit = Compositions(nstates+denom,length=nstates)
+    rows = list(Tuples(values,nstates))
+    #for t in linit:
+    #    r = [QQ(i-1)/denom for i in t]
+    #    rows.append(tuple(r))
+    if info: print(f'{len(rows)} rows')
+    return pfas_from_vectors(rows,alph,fixinitial,fixfinal,permute,info)
+
+#do bruteforce() algo using only the given list of transition probabilities as entries
+#if oneminus=True: if a probability p is present but not 1-p, then 1-p will automatically be added
+#if makepfa=True, make sure the matrices are [generalized] stochastic
+def pfas_from_probs(nstates,probs,alph=['0','1'],
+                    fixinitial=None,fixfinal=None,  
+                    permute=True,info=False,
+                    oneminus=True,makepfa=True):
+    pro_list = deepcopy(probs)
+    if oneminus:
+        for p in pro_list:
+            if not (1-p in pro_list):
+                pro_list.append(1-p)
+    if info: print(f'{len(pro_list)} possible entries')
+    lrowsall = Tuples(tuple(pro_list),nstates)#.list()
+    if makepfa:
+        lrows = [r for r in lrowsall if sum(r) == 1]
+    else:
+        lrows = lrowsall
+    if info: print(f'{len(lrows)} rows')
+    return pfas_from_vectors(lrows,alph,fixinitial,fixfinal,permute,info)
+
+
+#################################################################################
+
 
 class WeightedAutomaton(SageObject):
     def __init__(self, 
@@ -1129,9 +1236,8 @@ class WeightedAutomaton(SageObject):
 
         Note that the output is *not* necessarily a PFA when ``self`` is.
         """
-        newdict = {}
-        for a in self.alphabet:
-            newdict[a] = self.transitions[a].transpose()
+        newdict = dict(zip(self.alphabet,
+                           [m.transpose() for m in self.transitions]))
         return WeightedAutomaton(newdict, self.final.transpose(),
                                  self.initial.transpose(), ring=self.ring,
                                  variables=self.vars)
