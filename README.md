@@ -13,10 +13,10 @@ preprint](https://arxiv.org/abs/2402.13376). All relevant mathematical
 definitions can be found there.
 The code is being completely revamped and is in a highly unstable state, with
 lots more functionality planned and current functionality subject to change. In
-particular, properly formatted documentation is urgently needed and is currently
+particular, better documentation is urgently needed and is currently
 a high priority. In lieu of that for the time being, many examples are provided
-in ``Examples.ipynb`` which should cover the basics. The code itself includes
-comments describing the usage of every function.
+in ``Examples.ipynb`` which should cover the basics. Docstrings are also
+provided for all functions.
 
 ## Files
 * ``WeightedAutomaton.py``: WeightedAutomaton and auxiliary ProbabilityList classes
