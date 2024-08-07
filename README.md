@@ -22,15 +22,23 @@ comments describing the usage of every function.
 * ``WeightedAutomaton.py``: WeightedAutomaton and auxiliary ProbabilityList classes
 * ``witnesses``: a Deflate (zlib)-compressed archive of many witnesses to the [PFA
   complexity](https://arxiv.org/abs/2402.13376) of binary strings through length
-  9 and beyond
+  10 and beyond
 
 ## Installation
 Requires Sage 9.x or higher (for Python 3). Tested in 9.4. The code heavily uses
 native Sage functionality and cannot run in Python alone.
 
-To use, just copy WeightedAutomaton.py into the working directory and run
+To use from the Sage command line, just copy WeightedAutomaton.py into the
+working directory and run
  
     sage: load("WeightedAutomaton.py")
+
+If in a Jupyter notebook, you should instead run
+
+    %run -i 'WeightedAutomaton.py'
+
+in a cell, or use your preferred method of running external scripts. (Make sure
+your kernel is set to Sage!)
 
 If you also want the database of PFA complexity witnesses, download the file
 ``witnesses`` to the working directory and run, e.g.,
@@ -40,6 +48,6 @@ If you also want the database of PFA complexity witnesses, download the file
 to store the database (formatted as a dictionary associating each string to a
 list of ``WeightedAutomaton`` objects) in ``SW``.
 
-## Example usage
+## Usage and examples
 
-See ``Examples.ipynb``. More to come here.
+See docstrings and ``Examples.ipynb``. More to come here!
